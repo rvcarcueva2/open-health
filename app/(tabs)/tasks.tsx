@@ -1,10 +1,11 @@
 import { useTabBarScroll } from '@/src/components/ScrollContext';
 import {
-    borderRadius,
-    colors,
-    globalStyles,
-    spacing,
-    typography,
+  borderRadius,
+  colors,
+  fonts,
+  globalStyles,
+  spacing,
+  typography
 } from '@/styles/global';
 import { Ionicons } from '@expo/vector-icons';
 import { SectionList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -120,6 +121,7 @@ export default function TasksScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        stickySectionHeadersEnabled={false}
         onScroll={onScroll}
         scrollEventThrottle={16}
         renderSectionHeader={({ section }) => (
@@ -177,12 +179,12 @@ const styles = StyleSheet.create({
   },
   filterChipText: {
     ...typography.bodySmall,
-    fontWeight: '600',
+    fontFamily: fonts.semiBold,
     color: colors.textSecondary,
   },
   filterChipTextActive: {
     ...typography.bodySmall,
-    fontWeight: '600',
+    fontFamily: fonts.semiBold,
     color: colors.textOnPrimary,
   },
   listContent: {
@@ -208,7 +210,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: borderRadius.sm,
     overflow: 'hidden',
-    fontWeight: '700',
+    fontFamily: fonts.bold,
   },
   taskCard: {
     flexDirection: 'row',
@@ -233,7 +235,7 @@ const styles = StyleSheet.create({
   },
   taskPatient: {
     ...typography.body,
-    fontWeight: '600',
+    fontFamily: fonts.semiBold,
     marginBottom: 2,
   },
   taskType: {
@@ -251,7 +253,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: fonts.bold,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },

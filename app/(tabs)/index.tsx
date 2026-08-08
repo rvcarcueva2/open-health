@@ -6,11 +6,12 @@ import { syncNow } from '@/src/sync/syncService';
 import {
   borderRadius,
   colors,
+  fonts,
   globalStyles,
   spacing,
-  typography,
+  typography
 } from '@/styles/global';
-import { Ionicons } from '@expo/vector-icons';
+import { FontAwesome6, Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -183,12 +184,14 @@ export default function HomeScreen() {
             <View style={styles.actionsGrid}>
               <QuickActionCard
                 icon="person-add"
-                label="Register Patient"
+                label="Register   Patient"
                 color="#1a57ad"
                 onPress={() => router.push('/patients')}
               />
               <QuickActionCard
                 icon="home"
+                iconLibrary="fontawesome6"
+                faIcon="house-medical-circle-check"
                 label="Register Household"
                 color="#2e7d5b"
                 onPress={() => {}}
@@ -213,7 +216,7 @@ export default function HomeScreen() {
               />
               <QuickActionCard
                 icon="woman"
-                label="Prenatal Visit"
+                label="Prenatal                          Visit"
                 color="#00838f"
                 onPress={() => {}}
               />
@@ -256,6 +259,8 @@ export default function HomeScreen() {
               dueDate="Today, 3:00 PM"
               status="pending"
               icon="home"
+              iconLibrary="fontawesome6"
+              faIcon="house-medical"
             />
           </View>
 
@@ -306,24 +311,30 @@ export default function HomeScreen() {
 // --- Quick Action Card Component ---
 function QuickActionCard({
   icon,
+  iconLibrary,
+  faIcon,
   label,
   color,
   onPress,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
+  iconLibrary?: 'ionicons' | 'fontawesome6';
+  faIcon?: string;
   label: string;
   color: string;
   onPress: () => void;
 }) {
   return (
     <TouchableOpacity
-      style={styles.actionCard}
+      style={[styles.actionCard, { backgroundColor: color + '12' }]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <View style={[styles.actionIconContainer, { backgroundColor: color + '14' }]}>
-        <Ionicons name={icon} size={24} color={color} />
-      </View>
+      {iconLibrary === 'fontawesome6' && faIcon ? (
+        <FontAwesome6 name={faIcon} size={24} color={color} />
+      ) : (
+        <Ionicons name={icon} size={26} color={color} />
+      )}
       <Text style={styles.actionLabel}>{label}</Text>
     </TouchableOpacity>
   );
@@ -336,12 +347,16 @@ function ActivityItem({
   dueDate,
   status,
   icon,
+  iconLibrary,
+  faIcon,
 }: {
   patientName: string;
   activityType: string;
   dueDate: string;
   status: 'pending' | 'completed' | 'overdue';
   icon: keyof typeof Ionicons.glyphMap;
+  iconLibrary?: 'ionicons' | 'fontawesome6';
+  faIcon?: string;
 }) {
   const statusColors = {
     pending: colors.warning,
@@ -352,7 +367,11 @@ function ActivityItem({
   return (
     <TouchableOpacity style={styles.activityCard} activeOpacity={0.7}>
       <View style={[styles.activityIcon, { backgroundColor: statusColors[status] + '14' }]}>
-        <Ionicons name={icon} size={18} color={statusColors[status]} />
+        {iconLibrary === 'fontawesome6' && faIcon ? (
+          <FontAwesome6 name={faIcon} size={16} color={statusColors[status]} />
+        ) : (
+          <Ionicons name={icon} size={18} color={statusColors[status]} />
+        )}
       </View>
       <View style={styles.activityContent}>
         <Text style={styles.activityPatient}>{patientName}</Text>
@@ -476,7 +495,7 @@ const styles = StyleSheet.create({
   },
   syncDetailValue: {
     fontSize: 18,
-    fontWeight: '700',
+    fontFamily: fonts.bold,
     color: colors.text,
     marginBottom: 2,
   },
@@ -516,44 +535,30 @@ const styles = StyleSheet.create({
   viewAllText: {
     ...typography.body,
     color: colors.primary,
-    fontWeight: '600',
+    fontFamily: fonts.semiBold,
   },
 
   // Quick Actions Grid
   actionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    justifyContent: 'space-between',
     gap: spacing.md,
   },
   actionCard: {
-    width: '47.5%',
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
+    width: '30%',
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 110,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  actionIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: spacing.md,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.sm,
   },
   actionLabel: {
-    ...typography.body,
-    fontWeight: '600',
+    ...typography.caption,
+    fontFamily: fonts.medium,
     textAlign: 'center',
-    color: colors.text,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
   },
 
   // Activity Items
@@ -580,7 +585,7 @@ const styles = StyleSheet.create({
   },
   activityPatient: {
     ...typography.body,
-    fontWeight: '600',
+    fontFamily: fonts.semiBold,
     marginBottom: 2,
   },
   activityType: {
@@ -598,7 +603,7 @@ const styles = StyleSheet.create({
   },
   statusBadgeText: {
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: fonts.bold,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -628,7 +633,7 @@ const styles = StyleSheet.create({
   },
   patientName: {
     ...typography.body,
-    fontWeight: '600',
+    fontFamily: fonts.semiBold,
     marginBottom: 2,
   },
   patientMeta: {

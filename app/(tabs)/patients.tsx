@@ -2,24 +2,25 @@ import { useTabBarScroll } from '@/src/components/ScrollContext';
 import { createPatient } from '@/src/fhir/patientService';
 import { usePatients } from '@/src/hooks/usePatients';
 import {
-  borderRadius,
-  colors,
-  globalStyles,
-  spacing,
-  typography,
+    borderRadius,
+    colors,
+    fonts,
+    globalStyles,
+    spacing,
+    typography
 } from '@/styles/global';
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import {
-  Alert,
-  FlatList,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    FlatList,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -249,7 +250,7 @@ const styles = StyleSheet.create({
   },
   patientName: {
     ...typography.body,
-    fontWeight: '600',
+    fontFamily: fonts.semiBold,
     marginBottom: 2,
   },
   patientMeta: {

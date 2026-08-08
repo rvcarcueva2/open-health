@@ -2,9 +2,10 @@ import { useTabBarScroll } from '@/src/components/ScrollContext';
 import {
     borderRadius,
     colors,
+    fonts,
     globalStyles,
     spacing,
-    typography,
+    typography
 } from '@/styles/global';
 import { Ionicons } from '@expo/vector-icons';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -210,7 +211,7 @@ const styles = StyleSheet.create({
   },
   settingsLabel: {
     ...typography.body,
-    fontWeight: '600',
+    fontFamily: fonts.semiBold,
   },
   settingsSubtitle: {
     ...typography.bodySmall,
