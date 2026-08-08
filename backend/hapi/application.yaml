@@ -1,0 +1,9 @@
+hapi:
+  fhir:
+    version: R4
+
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres:5432/hapi
+    username: admin
+    password: admin
