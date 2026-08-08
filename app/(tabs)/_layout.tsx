@@ -6,7 +6,10 @@ export default function TabsLayout() {
   return (
     <ScrollProvider>
       <Tabs
-        screenOptions={{ headerShown: false }}
+        screenOptions={{
+          headerShown: false,
+          animation: 'shift',
+        }}
         tabBar={(props) => <FloatingTabBar {...props} />}
       >
         <Tabs.Screen name="index" options={{ title: 'Home' }} />
