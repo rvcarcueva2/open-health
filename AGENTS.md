@@ -291,7 +291,7 @@ Sync Later
 The backend currently runs on:
 
 ```text
-http://192.168.254.167:8082/fhir
+http://192.168.254.167:8080/fhir
 ```
 
 Configured in:
@@ -304,7 +304,7 @@ Example:
 
 ```ts
 export const API_URL =
-  'http://192.168.254.167:8082/fhir';
+  'http://192.168.254.167:8080/fhir';
 ```
 
 ---
