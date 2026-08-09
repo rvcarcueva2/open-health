@@ -38,7 +38,10 @@ export default function PatientsScreen() {
     return {
       id: data.id,
       name: data.name?.[0]
-        ? `${data.name[0].given?.join(' ') ?? ''} ${data.name[0].family ?? ''}`
+        ? `${data.name[0].given?.[0] ?? ''} ${data.name[0].given?.[1]
+            ? `${data.name[0].given[1].charAt(0)}. `
+            : ''
+          }${data.name[0].family ?? ''}`.trim()
         : 'Unknown',
       gender: data.gender ?? '—',
       birthDate: data.birthDate ?? '—',

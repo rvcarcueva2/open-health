@@ -77,8 +77,8 @@ export default function PatientDetailScreen() {
 
   const name = patient.name?.[0];
   const fullName = name
-    ? `${name.given?.join(' ') ?? ''} ${name.family ?? ''}`.trim()
-    : 'Unknown';
+  ? `${name.given?.[0] ?? ''} ${name.given?.[1] ? `${name.given[1].charAt(0)}. ` : ''}${name.family ?? ''}`.trim()
+  : 'Unknown';
   const firstName = name?.given?.[0] ?? '';
   const middleName = name?.given?.[1] ?? '';
   const lastName = name?.family ?? '';
@@ -126,10 +126,7 @@ export default function PatientDetailScreen() {
             <Ionicons name="person" size={32} color={colors.primary} />
           </View>
           <Text style={styles.profileName}>{fullName}</Text>
-          <Text style={styles.profileMeta}>
-            {gender.charAt(0).toUpperCase() + gender.slice(1)}
-            {age !== null ? ` • ${age} years old` : ''}
-          </Text>
+          <Text style={styles.profileMeta}>{patient.id}</Text>
           <View style={styles.syncBadge}>
             <Ionicons
               name={synced ? 'cloud-done' : 'cloud-upload-outline'}
@@ -211,7 +208,6 @@ export default function PatientDetailScreen() {
             </View>
           </View>
 
-          <InfoRow label="Resource ID" value={patient.id} small />
           <InfoRow label="Resource Type" value={patient.resourceType} />
           <InfoRow
             label="Profile"
