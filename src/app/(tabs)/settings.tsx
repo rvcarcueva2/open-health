@@ -93,7 +93,7 @@ export default function SettingsScreen() {
           <SettingsItem
             icon="server"
             label="FHIR Server"
-            subtitle="192.168.254.167:8082"
+            subtitle="192.168.254.167:8080"
           />
           <SettingsItem
             icon="download"
