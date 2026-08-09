@@ -1,3 +1,4 @@
+import barangaysData from "../data/templates/psgc-barangays.json";
 import { db } from "./database";
 
 export function runMigrations() {
@@ -21,5 +22,52 @@ export function runMigrations() {
       display TEXT,
       system TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS barangays (
+      brgy_code TEXT PRIMARY KEY,
+      brgy_name TEXT NOT NULL,
+      city_code TEXT NOT NULL,
+      province_code TEXT NOT NULL,
+      region_code TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_barangays_city_code ON barangays(city_code);
   `);
+
+  // Seed barangays if table is empty
+  seedBarangays();
+}
+
+function seedBarangays() {
+  const count = db.getFirstSync<{ cnt: number }>(
+    `SELECT COUNT(*) as cnt FROM barangays`
+  );
+
+  if (count && count.cnt > 0) {
+    return; // Already seeded
+  }
+
+  console.log('SEEDING BARANGAYS — loading 42,029 records...');
+
+  const BATCH_SIZE = 500;
+  const data = barangaysData as any[];
+
+  for (let i = 0; i < data.length; i += BATCH_SIZE) {
+    const batch = data.slice(i, i + BATCH_SIZE);
+    const placeholders = batch.map(() => '(?, ?, ?, ?, ?)').join(',');
+    const values = batch.flatMap((b) => [
+      b.brgy_code,
+      b.brgy_name,
+      b.city_code,
+      b.province_code,
+      b.region_code,
+    ]);
+
+    db.runSync(
+      `INSERT OR IGNORE INTO barangays (brgy_code, brgy_name, city_code, province_code, region_code) VALUES ${placeholders}`,
+      values
+    );
+  }
+
+  console.log('BARANGAYS SEEDED SUCCESSFULLY');
 }

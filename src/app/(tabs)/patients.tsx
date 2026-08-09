@@ -1,36 +1,37 @@
 import { useTabBarScroll } from '@/src/components/ScrollContext';
-import { createPatient } from '@/src/fhir/patientService';
 import { usePatients } from '@/src/hooks/usePatients';
 import {
-    borderRadius,
-    colors,
-    fonts,
-    globalStyles,
-    spacing,
-    typography
+  borderRadius,
+  colors,
+  fonts,
+  globalStyles,
+  spacing,
+  typography
 } from '@/styles/global';
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
-    Alert,
-    FlatList,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  FlatList,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function PatientsScreen() {
   const { patients, refresh } = usePatients();
   const { onScroll } = useTabBarScroll();
-  const [showForm, setShowForm] = useState(false);
-  const [family, setFamily] = useState('');
-  const [given, setGiven] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Refresh patient list when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
 
   const parsedPatients = patients.map((p) => {
     const data = typeof p.data === 'string' ? JSON.parse(p.data) : p.data;
@@ -49,32 +50,13 @@ export default function PatientsScreen() {
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  async function handleSave() {
-    if (!family.trim() || !given.trim()) {
-      Alert.alert('Validation', 'Family and Given name are required.');
-      return;
-    }
-
-    try {
-      await createPatient(given.trim(), family.trim());
-      Alert.alert('Success', 'Patient registered successfully.');
-      setFamily('');
-      setGiven('');
-      setShowForm(false);
-      refresh();
-    } catch (error) {
-      console.error(error);
-      Alert.alert('Error', 'Failed to register patient.');
-    }
-  }
-
   return (
     <SafeAreaView style={globalStyles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Patients</Text>
         <TouchableOpacity
           style={styles.addButton}
-          onPress={() => setShowForm(true)}
+          onPress={() => router.push('/register-patient')}
           activeOpacity={0.7}
         >
           <Ionicons name="add" size={22} color={colors.textOnPrimary} />
@@ -118,14 +100,18 @@ export default function PatientsScreen() {
           </View>
         }
         renderItem={({ item }) => (
-          <TouchableOpacity style={styles.patientCard} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={styles.patientCard}
+            activeOpacity={0.7}
+            onPress={() => router.push({ pathname: '/patient/[id]', params: { id: item.id } })}
+          >
             <View style={styles.patientAvatar}>
               <Ionicons name="person" size={20} color={colors.primary} />
             </View>
             <View style={styles.patientInfo}>
               <Text style={styles.patientName}>{item.name}</Text>
               <Text style={styles.patientMeta}>
-                {item.gender} • DOB: {item.birthDate}
+                {item.gender.charAt(0).toUpperCase() + item.gender.slice(1)} • {item.birthDate}
               </Text>
             </View>
             <View style={styles.syncIndicator}>
@@ -139,48 +125,6 @@ export default function PatientsScreen() {
           </TouchableOpacity>
         )}
       />
-
-      {/* Register Patient Modal */}
-      <Modal visible={showForm} animationType="slide" presentationStyle="pageSheet">
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowForm(false)}>
-              <Ionicons name="close" size={24} color={colors.text} />
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>Register Patient</Text>
-            <View style={{ width: 24 }} />
-          </View>
-
-          <ScrollView style={styles.modalContent}>
-            <Text style={styles.inputLabel}>Family Name</Text>
-            <TextInput
-              style={styles.input}
-              value={family}
-              onChangeText={setFamily}
-              placeholder="e.g., Dela Cruz"
-              placeholderTextColor={colors.textTertiary}
-            />
-
-            <Text style={styles.inputLabel}>Given Name</Text>
-            <TextInput
-              style={styles.input}
-              value={given}
-              onChangeText={setGiven}
-              placeholder="e.g., Juan"
-              placeholderTextColor={colors.textTertiary}
-            />
-
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={handleSave}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="checkmark" size={20} color={colors.textOnPrimary} />
-              <Text style={styles.saveButtonText}>Register Patient</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -273,56 +217,5 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textTertiary,
     marginTop: spacing.xs,
-  },
-
-  // Modal
-  modalContainer: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  modalTitle: {
-    ...typography.h2,
-  },
-  modalContent: {
-    padding: spacing.xl,
-  },
-  inputLabel: {
-    ...typography.label,
-    marginBottom: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  input: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 14,
-    ...typography.body,
-    borderWidth: 1,
-    borderColor: colors.border,
-    color: colors.text,
-  },
-  saveButton: {
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.md,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.xxxl,
-  },
-  saveButtonText: {
-    ...typography.h3,
-    color: colors.textOnPrimary,
   },
 });
