@@ -35,6 +35,14 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="register-patient"
+          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+        />
+        <Stack.Screen
+          name="patient/[id]"
+          options={{ animation: 'ios_from_right' }}
+        />
       </Stack>
     </>
   );

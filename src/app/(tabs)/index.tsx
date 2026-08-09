@@ -186,7 +186,7 @@ export default function HomeScreen() {
                 icon="person-add"
                 label="Register   Patient"
                 color="#1a57ad"
-                onPress={() => router.push('/patients')}
+                onPress={() => router.push('/register-patient')}
               />
               <QuickActionCard
                 icon="home"
