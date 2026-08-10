@@ -1,3 +1,4 @@
+import { AlertConfig, CustomAlert } from '@/src/components/CustomAlert';
 import { getHouseholdMembers } from '@/src/db/householdMemberRepository';
 import { getResourceById } from '@/src/db/resourceRepository';
 import { FHIRGroup, HEALTH_INDICATOR_CONFIG, HouseholdMember } from '@/src/models/Household';
@@ -15,7 +16,6 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -31,6 +31,9 @@ export default function HouseholdDetailScreen() {
   const [synced, setSynced] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [alertConfig, setAlertConfig] = useState<AlertConfig>({
+    visible: false, title: '', message: '',
+  });
 
   useEffect(() => {
     loadHousehold();
@@ -128,15 +131,17 @@ export default function HouseholdDetailScreen() {
       router.push({ pathname: '/patient/[id]', params: { id: member.patientId } });
     } else {
       // Offer conversion to patient
-      Alert.alert(
-        'Register as Patient?',
-        `${member.firstName} ${member.lastName} does not yet have a Patient record. Would you like to register them as a patient?`,
-        [
+      setAlertConfig({
+        visible: true,
+        title: 'Register as Patient?',
+        message: `${member.firstName} ${member.lastName} does not yet have a Patient record. Would you like to register them as a patient?`,
+        icon: 'person-add',
+        iconColor: colors.primary,
+        buttons: [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Register Patient',
+            text: 'Register',
             onPress: () => {
-              // Extract structured address from household
               const addr = household ? extractStructuredAddressFromGroup(household) : null;
 
               router.push({
@@ -162,8 +167,8 @@ export default function HouseholdDetailScreen() {
               });
             },
           },
-        ]
-      );
+        ],
+      });
     }
   }
 
@@ -330,6 +335,11 @@ export default function HouseholdDetailScreen() {
         )}
 
       </ScrollView>
+
+      <CustomAlert
+        config={alertConfig}
+        onDismiss={() => setAlertConfig((prev) => ({ ...prev, visible: false }))}
+      />
     </SafeAreaView>
   );
 }

@@ -1,3 +1,4 @@
+import { AlertConfig, CustomAlert } from '@/src/components/CustomAlert';
 import { StepHeadOfHousehold } from '@/src/components/household/StepHeadOfHousehold';
 import { StepHealthIndicators } from '@/src/components/household/StepHealthIndicators';
 import { StepHouseholdAddress } from '@/src/components/household/StepHouseholdAddress';
@@ -27,7 +28,6 @@ import { randomUUID } from 'expo-crypto';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
-    Alert,
     KeyboardAvoidingView,
     Platform,
     StyleSheet,
@@ -59,6 +59,9 @@ export default function RegisterHouseholdScreen() {
   const [formData, setFormData] = useState<HouseholdFormData>(initialData);
   const [errors, setErrors] = useState<ValidationError[]>([]);
   const [saving, setSaving] = useState(false);
+  const [alertConfig, setAlertConfig] = useState<AlertConfig>({
+    visible: false, title: '', message: '',
+  });
 
   function updateFormData(updates: Partial<HouseholdFormData>) {
     setFormData((prev) => ({ ...prev, ...updates }));
@@ -135,14 +138,23 @@ export default function RegisterHouseholdScreen() {
 
       console.log('HOUSEHOLD REGISTERED SUCCESSFULLY', group.id);
 
-      Alert.alert(
-        'Household Registered',
-        `${formData.householdName} has been registered successfully.`,
-        [{ text: 'OK', onPress: () => router.back() }]
-      );
+      setAlertConfig({
+        visible: true,
+        title: 'Household Registered',
+        message: `${formData.householdName} has been registered successfully.`,
+        icon: 'checkmark-circle',
+        buttons: [{ text: 'OK', onPress: () => router.back() }],
+      });
     } catch (error) {
       console.error('HOUSEHOLD REGISTRATION ERROR', error);
-      Alert.alert('Error', 'Failed to register household. Please try again.');
+      setAlertConfig({
+        visible: true,
+        title: 'Error',
+        message: 'Failed to register household. Please try again.',
+        icon: 'alert-circle',
+        iconColor: colors.error,
+        buttons: [{ text: 'OK' }],
+      });
     } finally {
       setSaving(false);
     }
@@ -301,6 +313,11 @@ export default function RegisterHouseholdScreen() {
           )}
         </View>
       </KeyboardAvoidingView>
+
+      <CustomAlert
+        config={alertConfig}
+        onDismiss={() => setAlertConfig((prev) => ({ ...prev, visible: false }))}
+      />
     </SafeAreaView>
   );
 }

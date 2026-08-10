@@ -1,3 +1,4 @@
+import { AlertConfig, CustomAlert } from '@/src/components/CustomAlert';
 import { StepAddress } from '@/src/components/register/StepAddress';
 import { StepBasicDemographics } from '@/src/components/register/StepBasicDemographics';
 import { StepContact } from '@/src/components/register/StepContact';
@@ -25,7 +26,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
-    Alert,
     KeyboardAvoidingView,
     Platform,
     StyleSheet,
@@ -87,6 +87,9 @@ export default function RegisterPatientScreen() {
   const [formData, setFormData] = useState<RegistrationFormData>(initialFormData);
   const [errors, setErrors] = useState<ValidationError[]>([]);
   const [saving, setSaving] = useState(false);
+  const [alertConfig, setAlertConfig] = useState<AlertConfig>({
+    visible: false, title: '', message: '',
+  });
 
   function updateFormData(updates: Partial<RegistrationFormData>) {
     setFormData((prev) => ({ ...prev, ...updates }));
@@ -171,14 +174,23 @@ export default function RegisterPatientScreen() {
 
       console.log('PATIENT REGISTERED SUCCESSFULLY', patient.id);
 
-      Alert.alert(
-        'Patient Registered',
-        `${formData.firstName} ${formData.lastName} has been registered successfully.`,
-        [{ text: 'OK', onPress: () => router.back() }]
-      );
+      setAlertConfig({
+        visible: true,
+        title: 'Patient Registered',
+        message: `${formData.firstName} ${formData.lastName} has been registered successfully.`,
+        icon: 'checkmark-circle',
+        buttons: [{ text: 'OK', onPress: () => router.back() }],
+      });
     } catch (error) {
       console.error('REGISTRATION ERROR', error);
-      Alert.alert('Error', 'Failed to register patient. Please try again.');
+      setAlertConfig({
+        visible: true,
+        title: 'Error',
+        message: 'Failed to register patient. Please try again.',
+        icon: 'alert-circle',
+        iconColor: colors.error,
+        buttons: [{ text: 'OK' }],
+      });
     } finally {
       setSaving(false);
     }
@@ -325,6 +337,11 @@ export default function RegisterPatientScreen() {
         )}
       </View>
       </KeyboardAvoidingView>
+
+      <CustomAlert
+        config={alertConfig}
+        onDismiss={() => setAlertConfig((prev) => ({ ...prev, visible: false }))}
+      />
     </SafeAreaView>
   );
 }

@@ -4,23 +4,23 @@ import { isOnline } from '@/src/sync/networkMonitor';
 import { getPendingQueueItems } from '@/src/sync/syncQueue';
 import { syncNow } from '@/src/sync/syncService';
 import {
-    borderRadius,
-    colors,
-    fonts,
-    globalStyles,
-    spacing,
-    typography
+  borderRadius,
+  colors,
+  fonts,
+  globalStyles,
+  spacing,
+  typography
 } from '@/styles/global';
 import { FontAwesome6, Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -97,7 +97,10 @@ export default function HomeScreen() {
     return {
       id: data.id,
       name: data.name?.[0]
-        ? `${data.name[0].given?.join(' ') ?? ''} ${data.name[0].family ?? ''}`
+        ? `${data.name[0].given?.[0] ?? ''} ${data.name[0].given?.[1]
+            ? `${data.name[0].given[1].charAt(0)}. `
+            : ''
+          }${data.name[0].family ?? ''}`.trim()
         : 'Unknown',
       gender: data.gender ?? '—',
       birthDate: data.birthDate ?? '—',
@@ -287,6 +290,7 @@ export default function HomeScreen() {
                   key={patient.id}
                   style={styles.patientCard}
                   activeOpacity={0.7}
+                  onPress={() => router.push({ pathname: '/patient/[id]', params: { id: patient.id } })}
                 >
                   <View style={styles.patientAvatar}>
                     <Ionicons name="person" size={20} color={colors.primary} />

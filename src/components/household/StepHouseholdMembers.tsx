@@ -1,3 +1,4 @@
+import { AlertConfig, CustomAlert } from '@/src/components/CustomAlert';
 import {
     HouseholdFormData,
     HouseholdMember,
@@ -16,7 +17,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { randomUUID } from 'expo-crypto';
 import { useState } from 'react';
 import {
-    Alert,
     FlatList,
     Modal,
     ScrollView,
@@ -47,6 +47,9 @@ export function StepHouseholdMembers({ formData, updateFormData }: Props) {
     id: '',
   });
   const [memberErrors, setMemberErrors] = useState<string[]>([]);
+  const [alertConfig, setAlertConfig] = useState<AlertConfig>({
+    visible: false, title: '', message: '',
+  });
 
   function openAddModal() {
     setEditingMember(null);
@@ -84,10 +87,13 @@ export function StepHouseholdMembers({ formData, updateFormData }: Props) {
   }
 
   function handleRemoveMember(memberId: string) {
-    Alert.alert(
-      'Remove Member',
-      'Are you sure you want to remove this household member?',
-      [
+    setAlertConfig({
+      visible: true,
+      title: 'Remove Member',
+      message: 'Are you sure you want to remove this household member?',
+      icon: 'trash',
+      iconColor: colors.error,
+      buttons: [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Remove',
@@ -98,8 +104,8 @@ export function StepHouseholdMembers({ formData, updateFormData }: Props) {
             });
           },
         },
-      ]
-    );
+      ],
+    });
   }
 
   function handleDateChange(text: string) {
@@ -333,6 +339,11 @@ export function StepHouseholdMembers({ formData, updateFormData }: Props) {
           </ScrollView>
         </View>
       </Modal>
+
+      <CustomAlert
+        config={alertConfig}
+        onDismiss={() => setAlertConfig((prev) => ({ ...prev, visible: false }))}
+      />
     </>
   );
 }
