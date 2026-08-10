@@ -1,19 +1,20 @@
-import { StepAddress } from '@/src/components/register/StepAddress';
-import { StepBasicDemographics } from '@/src/components/register/StepBasicDemographics';
-import { StepContact } from '@/src/components/register/StepContact';
-import { StepIdentifiers } from '@/src/components/register/StepIdentifiers';
-import { StepReview } from '@/src/components/register/StepReview';
-import { linkMemberToPatient } from '@/src/db/householdMemberRepository';
-import { getResourceById, saveResource } from '@/src/db/resourceRepository';
-import { INITIAL_FORM_DATA, RegistrationFormData } from '@/src/models/Patient';
+import { StepHeadOfHousehold } from '@/src/components/household/StepHeadOfHousehold';
+import { StepHealthIndicators } from '@/src/components/household/StepHealthIndicators';
+import { StepHouseholdAddress } from '@/src/components/household/StepHouseholdAddress';
+import { StepHouseholdCharacteristics } from '@/src/components/household/StepHouseholdCharacteristics';
+import { StepHouseholdInfo } from '@/src/components/household/StepHouseholdInfo';
+import { StepHouseholdMembers } from '@/src/components/household/StepHouseholdMembers';
+import { StepHouseholdReview } from '@/src/components/household/StepHouseholdReview';
+import { saveHouseholdMember } from '@/src/db/householdMemberRepository';
+import { saveResource } from '@/src/db/resourceRepository';
+import { HouseholdFormData, INITIAL_HOUSEHOLD_FORM_DATA } from '@/src/models/Household';
 import { queueCreate } from '@/src/sync/syncQueue';
-import { linkPatientToHouseholdMember } from '@/src/utils/householdMapper';
-import { mapFormToFHIRPatient } from '@/src/utils/patientMapper';
+import { mapFormToFHIRGroup } from '@/src/utils/householdMapper';
 import {
-    validateStep1,
-    validateStep3,
+    validateHouseholdStep1,
+    validateHouseholdStep3,
     ValidationError,
-} from '@/src/utils/validation';
+} from '@/src/utils/householdValidation';
 import {
     borderRadius,
     colors,
@@ -22,7 +23,8 @@ import {
     typography,
 } from '@/styles/global';
 import { Ionicons } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
+import { randomUUID } from 'expo-crypto';
+import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
     Alert,
@@ -31,64 +33,34 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
-    View
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const STEPS = [
-  'Demographics',
-  'Identifiers',
-  'Contact',
+  'Household',
   'Address',
+  'Head',
+  'Members',
+  'Characteristics',
+  'Indicators',
   'Review',
 ];
 
-export default function RegisterPatientScreen() {
-  const params = useLocalSearchParams<{
-    prefillFirstName?: string;
-    prefillMiddleName?: string;
-    prefillLastName?: string;
-    prefillSex?: string;
-    prefillBirthDate?: string;
-    prefillRegionCode?: string;
-    prefillRegionDisplay?: string;
-    prefillProvinceCode?: string;
-    prefillProvinceDisplay?: string;
-    prefillCityCode?: string;
-    prefillCityDisplay?: string;
-    prefillBarangayCode?: string;
-    prefillBarangayDisplay?: string;
-    prefillHouseNumberStreet?: string;
-    fromHousehold?: string;
-    memberId?: string;
-  }>();
-
-  const initialFormData = useMemo<RegistrationFormData>(() => {
-    return {
-      ...INITIAL_FORM_DATA,
-      firstName: params.prefillFirstName || '',
-      middleName: params.prefillMiddleName || '',
-      lastName: params.prefillLastName || '',
-      sex: (params.prefillSex as RegistrationFormData['sex']) || '',
-      birthDate: params.prefillBirthDate || '',
-      regionCode: params.prefillRegionCode || '',
-      regionDisplay: params.prefillRegionDisplay || '',
-      provinceCode: params.prefillProvinceCode || '',
-      provinceDisplay: params.prefillProvinceDisplay || '',
-      cityCode: params.prefillCityCode || '',
-      cityDisplay: params.prefillCityDisplay || '',
-      barangayCode: params.prefillBarangayCode || '',
-      barangayDisplay: params.prefillBarangayDisplay || '',
-      houseNumberStreet: params.prefillHouseNumberStreet || '',
-    };
-  }, []);
-
+export default function RegisterHouseholdScreen() {
   const [currentStep, setCurrentStep] = useState(0);
-  const [formData, setFormData] = useState<RegistrationFormData>(initialFormData);
+  const initialData = useMemo<HouseholdFormData>(() => ({
+    ...INITIAL_HOUSEHOLD_FORM_DATA,
+    headOfHousehold: {
+      ...INITIAL_HOUSEHOLD_FORM_DATA.headOfHousehold,
+      id: randomUUID(),
+    },
+  }), []);
+  const [formData, setFormData] = useState<HouseholdFormData>(initialData);
   const [errors, setErrors] = useState<ValidationError[]>([]);
   const [saving, setSaving] = useState(false);
 
-  function updateFormData(updates: Partial<RegistrationFormData>) {
+  function updateFormData(updates: Partial<HouseholdFormData>) {
     setFormData((prev) => ({ ...prev, ...updates }));
   }
 
@@ -118,9 +90,9 @@ export default function RegisterPatientScreen() {
   function validateCurrentStep(): ValidationError[] {
     switch (currentStep) {
       case 0:
-        return validateStep1(formData);
+        return validateHouseholdStep1(formData);
       case 2:
-        return validateStep3(formData);
+        return validateHouseholdStep3(formData);
       default:
         return [];
     }
@@ -129,63 +101,54 @@ export default function RegisterPatientScreen() {
   async function handleSave() {
     setSaving(true);
     try {
-      // Generate PH Core-compliant FHIR Patient
-      const patient = mapFormToFHIRPatient(formData);
+      // Generate FHIR Group resource
+      const group = mapFormToFHIRGroup(formData);
 
-      console.log('SAVING TO SQLITE', patient.id);
+      console.log('SAVING HOUSEHOLD TO SQLITE', group.id);
 
       // Save to SQLite
-      await saveResource(patient);
+      await saveResource(group);
 
-      console.log('QUEUE ITEM CREATED', patient.id);
+      // Save household members to the linkage table
+      saveHouseholdMember({
+        householdId: group.id,
+        memberId: formData.headOfHousehold.id,
+        firstName: formData.headOfHousehold.firstName,
+        lastName: formData.headOfHousehold.lastName,
+        isHead: true,
+      });
 
-      // Queue for sync
-      await queueCreate(patient.id);
-
-      // Link patient to household member if coming from a household
-      if (params.fromHousehold && params.memberId) {
-        try {
-          // Update the linkage table (source of truth for member-patient relationship)
-          linkMemberToPatient(params.memberId, patient.id);
-
-          // Also update the FHIR Group resource for consistency
-          const householdResource = await getResourceById(params.fromHousehold);
-          if (householdResource) {
-            const groupData = typeof householdResource.data === 'string'
-              ? JSON.parse(householdResource.data)
-              : householdResource.data;
-
-            const updatedGroup = linkPatientToHouseholdMember(
-              groupData,
-              params.memberId,
-              patient.id
-            );
-
-            await saveResource(updatedGroup);
-            console.log('HOUSEHOLD MEMBER LINKED TO PATIENT', params.memberId, patient.id);
-          }
-        } catch (linkError) {
-          console.error('Failed to link patient to household member:', linkError);
-        }
+      for (const member of formData.members) {
+        saveHouseholdMember({
+          householdId: group.id,
+          memberId: member.id,
+          firstName: member.firstName,
+          lastName: member.lastName,
+          isHead: false,
+        });
       }
 
-      console.log('PATIENT REGISTERED SUCCESSFULLY', patient.id);
+      console.log('QUEUE ITEM CREATED', group.id);
+
+      // Queue for sync
+      await queueCreate(group.id);
+
+      console.log('HOUSEHOLD REGISTERED SUCCESSFULLY', group.id);
 
       Alert.alert(
-        'Patient Registered',
-        `${formData.firstName} ${formData.lastName} has been registered successfully.`,
+        'Household Registered',
+        `${formData.householdName} has been registered successfully.`,
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (error) {
-      console.error('REGISTRATION ERROR', error);
-      Alert.alert('Error', 'Failed to register patient. Please try again.');
+      console.error('HOUSEHOLD REGISTRATION ERROR', error);
+      Alert.alert('Error', 'Failed to register household. Please try again.');
     } finally {
       setSaving(false);
     }
   }
 
   function goToStep(step: number) {
-    // Only allow going back to previous steps
     if (step < currentStep) {
       setErrors([]);
       setCurrentStep(step);
@@ -196,7 +159,7 @@ export default function RegisterPatientScreen() {
     switch (currentStep) {
       case 0:
         return (
-          <StepBasicDemographics
+          <StepHouseholdInfo
             formData={formData}
             updateFormData={updateFormData}
             getFieldError={getFieldError}
@@ -204,15 +167,14 @@ export default function RegisterPatientScreen() {
         );
       case 1:
         return (
-          <StepIdentifiers
+          <StepHouseholdAddress
             formData={formData}
             updateFormData={updateFormData}
-            getFieldError={getFieldError}
           />
         );
       case 2:
         return (
-          <StepContact
+          <StepHeadOfHousehold
             formData={formData}
             updateFormData={updateFormData}
             getFieldError={getFieldError}
@@ -220,14 +182,28 @@ export default function RegisterPatientScreen() {
         );
       case 3:
         return (
-          <StepAddress
+          <StepHouseholdMembers
             formData={formData}
             updateFormData={updateFormData}
           />
         );
       case 4:
         return (
-          <StepReview
+          <StepHouseholdCharacteristics
+            formData={formData}
+            updateFormData={updateFormData}
+          />
+        );
+      case 5:
+        return (
+          <StepHealthIndicators
+            formData={formData}
+            updateFormData={updateFormData}
+          />
+        );
+      case 6:
+        return (
+          <StepHouseholdReview
             formData={formData}
             goToStep={goToStep}
           />
@@ -244,7 +220,7 @@ export default function RegisterPatientScreen() {
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={22} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Register Patient</Text>
+        <Text style={styles.headerTitle}>Register Household</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -261,7 +237,7 @@ export default function RegisterPatientScreen() {
                 ]}
               >
                 {index < currentStep ? (
-                  <Ionicons name="checkmark" size={12} color={colors.textOnPrimary} />
+                  <Ionicons name="checkmark" size={10} color={colors.textOnPrimary} />
                 ) : (
                   <Text
                     style={[
@@ -301,29 +277,29 @@ export default function RegisterPatientScreen() {
 
         {/* Footer Buttons */}
         <View style={styles.footer}>
-        {currentStep < STEPS.length - 1 ? (
-          <TouchableOpacity
-            style={styles.nextButton}
-            onPress={handleNext}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.nextButtonText}>Continue</Text>
-            <Ionicons name="arrow-forward" size={18} color={colors.textOnPrimary} />
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-            onPress={handleSave}
-            activeOpacity={0.7}
-            disabled={saving}
-          >
-            <Ionicons name="checkmark-circle" size={20} color={colors.textOnPrimary} />
-            <Text style={styles.saveButtonText}>
-              {saving ? 'Saving...' : 'Save Patient'}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
+          {currentStep < STEPS.length - 1 ? (
+            <TouchableOpacity
+              style={styles.nextButton}
+              onPress={handleNext}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.nextButtonText}>Continue</Text>
+              <Ionicons name="arrow-forward" size={18} color={colors.textOnPrimary} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+              onPress={handleSave}
+              activeOpacity={0.7}
+              disabled={saving}
+            >
+              <Ionicons name="checkmark-circle" size={20} color={colors.textOnPrimary} />
+              <Text style={styles.saveButtonText}>
+                {saving ? 'Saving...' : 'Save Household'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -355,7 +331,7 @@ const styles = StyleSheet.create({
     ...typography.h2,
   },
   progressContainer: {
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.lg,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
@@ -372,9 +348,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   progressDot: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
@@ -386,7 +362,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.success,
   },
   progressDotText: {
-    fontSize: 11,
+    fontSize: 10,
     fontFamily: fonts.semiBold,
     color: colors.textTertiary,
   },
@@ -394,10 +370,10 @@ const styles = StyleSheet.create({
     color: colors.textOnPrimary,
   },
   progressLine: {
-    width: 32,
+    width: 20,
     height: 2,
     backgroundColor: colors.border,
-    marginHorizontal: 4,
+    marginHorizontal: 2,
   },
   progressLineActive: {
     backgroundColor: colors.success,

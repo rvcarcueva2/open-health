@@ -40,7 +40,15 @@ export default function RootLayout() {
           options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
         />
         <Stack.Screen
+          name="register-household"
+          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+        />
+        <Stack.Screen
           name="patient/[id]"
+          options={{ animation: 'ios_from_right' }}
+        />
+        <Stack.Screen
+          name="household/[id]"
           options={{ animation: 'ios_from_right' }}
         />
       </Stack>

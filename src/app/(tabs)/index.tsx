@@ -4,23 +4,23 @@ import { isOnline } from '@/src/sync/networkMonitor';
 import { getPendingQueueItems } from '@/src/sync/syncQueue';
 import { syncNow } from '@/src/sync/syncService';
 import {
-  borderRadius,
-  colors,
-  fonts,
-  globalStyles,
-  spacing,
-  typography
+    borderRadius,
+    colors,
+    fonts,
+    globalStyles,
+    spacing,
+    typography
 } from '@/styles/global';
 import { FontAwesome6, Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -194,7 +194,7 @@ export default function HomeScreen() {
                 faIcon="house-medical-circle-check"
                 label="Register Household"
                 color="#2e7d5b"
-                onPress={() => {}}
+                onPress={() => router.push('/register-household')}
               />
               <QuickActionCard
                 icon="heart"
@@ -294,7 +294,7 @@ export default function HomeScreen() {
                   <View style={styles.patientInfo}>
                     <Text style={styles.patientName}>{patient.name}</Text>
                     <Text style={styles.patientMeta}>
-                      {patient.gender} • DOB: {patient.birthDate}
+                      {patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1)} • {patient.birthDate}
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />

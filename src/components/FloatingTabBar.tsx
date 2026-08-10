@@ -1,5 +1,5 @@
 import { borderRadius, colors, spacing } from '@/styles/global';
-import { Ionicons } from '@expo/vector-icons';
+import { FontAwesome6, Ionicons } from '@expo/vector-icons';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Animated, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useScrollContext } from './ScrollContext';
@@ -24,8 +24,6 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
           const { options } = descriptors[route.key];
           const isFocused = state.index === index;
 
-          const iconName = getIconName(route.name, isFocused);
-
           const onPress = () => {
             const event = navigation.emit({
               type: 'tabPress',
@@ -45,6 +43,8 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
             });
           };
 
+          const tabColor = isFocused ? colors.primary : colors.textTertiary;
+
           return (
             <TouchableOpacity
               key={route.key}
@@ -56,11 +56,15 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
               style={styles.tab}
               activeOpacity={0.7}
             >
-              <Ionicons
-                name={iconName}
-                size={20}
-                color={isFocused ? colors.primary : colors.textTertiary}
-              />
+              {route.name === 'households' ? (
+                <FontAwesome6 name="house-medical" size={18} color={tabColor} />
+              ) : (
+                <Ionicons
+                  name={getIconName(route.name, isFocused)}
+                  size={20}
+                  color={tabColor}
+                />
+              )}
             </TouchableOpacity>
           );
         })}

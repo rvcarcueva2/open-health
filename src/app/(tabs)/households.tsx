@@ -1,97 +1,112 @@
 import { useTabBarScroll } from '@/src/components/ScrollContext';
-import { usePatients } from '@/src/hooks/usePatients';
+import { useHouseholds } from '@/src/hooks/useHouseholds';
+import { FHIRGroup, HEALTH_INDICATOR_CONFIG } from '@/src/models/Household';
+import { extractAddressFromGroup, extractMembersFromGroup } from '@/src/utils/householdMapper';
 import {
   borderRadius,
   colors,
   fonts,
   globalStyles,
   spacing,
-  typography
+  typography,
 } from '@/styles/global';
-import { Ionicons } from '@expo/vector-icons';
+import { FontAwesome6, Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   FlatList,
   Modal,
+  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const SEX_FILTER_OPTIONS = [
-  { value: 'male', label: 'Male', icon: 'male' as const, color: '#1a57ad' },
-  { value: 'female', label: 'Female', icon: 'female' as const, color: '#c62828' },
-  { value: 'other', label: 'Other', icon: 'person' as const, color: '#6a1b9a' },
-  { value: 'unknown', label: 'Unknown', icon: 'help-circle' as const, color: '#f57c00' },
-];
+const HOUSEHOLD_EXTENSION_BASE = 'urn:household:extension';
 
-export default function PatientsScreen() {
-  const { patients, refresh } = usePatients();
+export default function HouseholdsScreen() {
+  const { households, refresh } = useHouseholds();
   const { onScroll } = useTabBarScroll();
   const [searchQuery, setSearchQuery] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
-  const [selectedSex, setSelectedSex] = useState<Set<string>>(new Set());
+  const [selectedIndicators, setSelectedIndicators] = useState<Set<string>>(new Set());
 
-  // Refresh patient list when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       refresh();
     }, [refresh])
   );
 
-  function toggleSexFilter(value: string) {
-    setSelectedSex((prev) => {
+  async function onRefresh() {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  }
+
+  function toggleIndicatorFilter(key: string) {
+    setSelectedIndicators((prev) => {
       const next = new Set(prev);
-      if (next.has(value)) {
-        next.delete(value);
+      if (next.has(key)) {
+        next.delete(key);
       } else {
-        next.add(value);
+        next.add(key);
       }
       return next;
     });
   }
 
-  const parsedPatients = patients.map((p) => {
-    const data = typeof p.data === 'string' ? JSON.parse(p.data) : p.data;
+  const parsedHouseholds = households.map((h) => {
+    const data: FHIRGroup = typeof h.data === 'string' ? JSON.parse(h.data) : h.data;
+    const address = extractAddressFromGroup(data);
+    const { head, members } = extractMembersFromGroup(data);
+    const memberCount = 1 + members.length;
+
+    // Extract health indicator keys from extensions
+    const indicatorKeys: string[] = (data.extension ?? [])
+      .filter((e) => e.url?.includes('/health-indicator/'))
+      .map((e) => e.url?.split('/').pop() || '')
+      .filter(Boolean);
+
     return {
       id: data.id,
-      name: data.name?.[0]
-        ? `${data.name[0].given?.[0] ?? ''} ${data.name[0].given?.[1]
-            ? `${data.name[0].given[1].charAt(0)}. `
-            : ''
-          }${data.name[0].family ?? ''}`.trim()
-        : 'Unknown',
-      gender: data.gender ?? '—',
-      birthDate: data.birthDate ?? '—',
-      synced: p.synced === 1,
+      name: data.name || 'Unnamed Household',
+      identifier: data.identifier?.[0]?.value || '',
+      address,
+      memberCount,
+      headName: head
+        ? [head.firstName, head.lastName].filter(Boolean).join(' ')
+        : '',
+      synced: h.synced === 1,
+      indicatorKeys,
     };
   });
 
   // Apply search filter
-  let filteredPatients = parsedPatients.filter((p) =>
-    p.name.toLowerCase().includes(searchQuery.toLowerCase())
+  let filteredHouseholds = parsedHouseholds.filter((h) =>
+    h.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    h.headName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Apply sex filter
-  if (selectedSex.size > 0) {
-    filteredPatients = filteredPatients.filter((p) =>
-      selectedSex.has(p.gender.toLowerCase())
+  // Apply health indicator filter
+  if (selectedIndicators.size > 0) {
+    filteredHouseholds = filteredHouseholds.filter((h) =>
+      Array.from(selectedIndicators).every((key) => h.indicatorKeys.includes(key))
     );
   }
 
-  const activeFilterCount = selectedSex.size;
+  const activeFilterCount = selectedIndicators.size;
 
   return (
     <SafeAreaView style={globalStyles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Patients</Text>
+        <Text style={styles.title}>Households</Text>
         <TouchableOpacity
           style={styles.addButton}
-          onPress={() => router.push('/register-patient')}
+          onPress={() => router.push('/register-household')}
           activeOpacity={0.7}
         >
           <Ionicons name="add" size={22} color={colors.textOnPrimary} />
@@ -103,7 +118,7 @@ export default function PatientsScreen() {
         <Ionicons name="search" size={18} color={colors.textTertiary} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search patients..."
+          placeholder="Search households..."
           placeholderTextColor={colors.textTertiary}
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -128,7 +143,7 @@ export default function PatientsScreen() {
             color={activeFilterCount > 0 ? colors.primary : colors.textSecondary}
           />
           <Text style={[styles.filterButtonText, activeFilterCount > 0 && styles.filterButtonTextActive]}>
-            {activeFilterCount > 0 ? `Sex (${activeFilterCount})` : 'Sex'}
+            {activeFilterCount > 0 ? `Indicators (${activeFilterCount})` : 'Indicators'}
           </Text>
           <Ionicons
             name="chevron-down"
@@ -137,43 +152,52 @@ export default function PatientsScreen() {
           />
         </TouchableOpacity>
         <Text style={styles.totalCount}>
-          {filteredPatients.length} patient{filteredPatients.length !== 1 ? 's' : ''}
+          {filteredHouseholds.length} household{filteredHouseholds.length !== 1 ? 's' : ''}
         </Text>
       </View>
 
-      {/* Patient List */}
+      {/* Household List */}
       <FlatList
-        data={filteredPatients}
+        data={filteredHouseholds}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
         scrollEventThrottle={16}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Ionicons name="people-outline" size={48} color={colors.textTertiary} />
-            <Text style={styles.emptyTitle}>No Patients Found</Text>
+            <FontAwesome6 name="house-medical" size={44} color={colors.textTertiary} />
+            <Text style={styles.emptyTitle}>No Households Found</Text>
             <Text style={styles.emptySubtext}>
               {searchQuery || activeFilterCount > 0
                 ? 'Try adjusting your search or filters'
-                : 'Tap + to register a new patient'}
+                : 'Tap + to register a new household'}
             </Text>
           </View>
         }
         renderItem={({ item }) => (
           <TouchableOpacity
-            style={styles.patientCard}
+            style={styles.householdCard}
             activeOpacity={0.7}
-            onPress={() => router.push({ pathname: '/patient/[id]', params: { id: item.id } })}
+            onPress={() => router.push({ pathname: '/household/[id]', params: { id: item.id } })}
           >
-            <View style={styles.patientAvatar}>
-              <Ionicons name="person" size={20} color={colors.primary} />
+            <View style={styles.householdAvatar}>
+              <FontAwesome6 name="house-medical" size={18} color={colors.primary} />
             </View>
-            <View style={styles.patientInfo}>
-              <Text style={styles.patientName}>{item.name}</Text>
-              <Text style={styles.patientMeta}>
-                {item.gender.charAt(0).toUpperCase() + item.gender.slice(1)} • {item.birthDate}
+            <View style={styles.householdInfo}>
+              <Text style={styles.householdName}>{item.name}</Text>
+              <Text style={styles.householdMeta}>
+                {item.identifier ? `#${item.identifier} • ` : ''}
+                {item.memberCount} member{item.memberCount > 1 ? 's' : ''}
               </Text>
+              {item.address ? (
+                <Text style={styles.householdAddress} numberOfLines={1}>
+                  {item.address}
+                </Text>
+              ) : null}
             </View>
             <View style={styles.syncIndicator}>
               <Ionicons
@@ -187,7 +211,7 @@ export default function PatientsScreen() {
         )}
       />
 
-      {/* Sex Filter Modal */}
+      {/* Health Indicator Filter Modal */}
       <Modal visible={filterVisible} animationType="fade" transparent>
         <TouchableOpacity
           style={styles.modalOverlay}
@@ -196,27 +220,31 @@ export default function PatientsScreen() {
         >
           <View style={styles.dropdownContainer}>
             <View style={styles.dropdownHeader}>
-              <Text style={styles.dropdownTitle}>Filter by Sex</Text>
+              <Text style={styles.dropdownTitle}>Filter by Health Indicators</Text>
               {activeFilterCount > 0 && (
-                <TouchableOpacity onPress={() => setSelectedSex(new Set())}>
+                <TouchableOpacity onPress={() => setSelectedIndicators(new Set())}>
                   <Text style={styles.clearText}>Clear</Text>
                 </TouchableOpacity>
               )}
             </View>
-            {SEX_FILTER_OPTIONS.map((option) => {
-              const isSelected = selectedSex.has(option.value);
+            {HEALTH_INDICATOR_CONFIG.map((indicator) => {
+              const isSelected = selectedIndicators.has(indicator.key);
               return (
                 <TouchableOpacity
-                  key={option.value}
+                  key={indicator.key}
                   style={styles.dropdownItem}
-                  onPress={() => toggleSexFilter(option.value)}
+                  onPress={() => toggleIndicatorFilter(indicator.key)}
                   activeOpacity={0.7}
                 >
-                  <View style={[styles.dropdownIcon, { backgroundColor: option.color + '14' }]}>
-                    <Ionicons name={option.icon} size={16} color={option.color} />
+                  <View style={[styles.dropdownIcon, { backgroundColor: indicator.color + '14' }]}>
+                    {indicator.iconLibrary === 'fontawesome6' ? (
+                      <FontAwesome6 name={indicator.icon} size={14} color={indicator.color} />
+                    ) : (
+                      <Ionicons name={indicator.icon as any} size={16} color={indicator.color} />
+                    )}
                   </View>
                   <Text style={[styles.dropdownLabel, isSelected && styles.dropdownLabelSelected]}>
-                    {option.label}
+                    {indicator.label}
                   </Text>
                   {isSelected && (
                     <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
@@ -307,7 +335,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingBottom: 100,
   },
-  patientCard: {
+  householdCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
@@ -317,26 +345,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  patientAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  householdAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.primaryLight,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: spacing.md,
   },
-  patientInfo: {
+  householdInfo: {
     flex: 1,
   },
-  patientName: {
+  householdName: {
     ...typography.body,
     fontFamily: fonts.semiBold,
     marginBottom: 2,
   },
-  patientMeta: {
+  householdMeta: {
     ...typography.bodySmall,
     color: colors.textTertiary,
+  },
+  householdAddress: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    marginTop: 2,
   },
   syncIndicator: {
     marginRight: spacing.sm,

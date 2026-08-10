@@ -32,6 +32,19 @@ export function runMigrations() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_barangays_city_code ON barangays(city_code);
+
+    CREATE TABLE IF NOT EXISTS household_members (
+      id TEXT PRIMARY KEY,
+      householdId TEXT NOT NULL,
+      memberId TEXT NOT NULL,
+      patientId TEXT,
+      firstName TEXT NOT NULL,
+      lastName TEXT NOT NULL,
+      isHead INTEGER DEFAULT 0
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_household_members_household ON household_members(householdId);
+    CREATE INDEX IF NOT EXISTS idx_household_members_member ON household_members(memberId);
   `);
 
   // Seed barangays if table is empty

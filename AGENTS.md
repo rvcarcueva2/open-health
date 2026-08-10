@@ -357,22 +357,5 @@ Terminology results should be cached locally in SQLite.
 * Keep synchronization logic inside `src/sync`.
 * Do not mix UI code with persistence logic.
 
----
-
-# Current Development Goal
-
-Build an offline-first Patient workflow:
-
-1. Create Patient
-2. Save to SQLite
-3. Queue synchronization
-4. Sync to HAPI FHIR
-5. Mark as synced
-6. Support offline operation
-7. Add terminology support
-8. Add Observation resources
-9. Add Encounter resources
-10. Add Practitioner resources
-
 ```
 ```
