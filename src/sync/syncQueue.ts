@@ -1,5 +1,5 @@
-import { db } from '../db/database';
 import { randomUUID } from 'expo-crypto';
+import { db } from '../db/database';
 
 export type SyncOperation =
   | 'CREATE'
@@ -70,10 +70,18 @@ export async function queueDelete(
 export async function getPendingQueueItems() {
   return db.getAllSync<SyncQueueItem>(
     `
-      SELECT *
-      FROM sync_queue
-      WHERE status = 'PENDING'
-      ORDER BY rowid ASC
+      SELECT sq.*
+      FROM sync_queue sq
+      LEFT JOIN resources r ON sq.resourceId = r.id
+      WHERE sq.status IN ('PENDING', 'FAILED')
+      ORDER BY
+        CASE r.resourceType
+          WHEN 'Patient' THEN 1
+          WHEN 'Encounter' THEN 2
+          WHEN 'Observation' THEN 3
+          ELSE 4
+        END,
+        sq.rowid ASC
     `
   );
 }

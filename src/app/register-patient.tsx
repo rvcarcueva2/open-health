@@ -179,7 +179,10 @@ export default function RegisterPatientScreen() {
         title: 'Patient Registered',
         message: `${formData.firstName} ${formData.lastName} has been registered successfully.`,
         icon: 'checkmark-circle',
-        buttons: [{ text: 'OK', onPress: () => router.back() }],
+        buttons: [{
+          text: 'View Profile',
+          onPress: () => router.replace({ pathname: '/patient/[id]', params: { id: patient.id } }),
+        }],
       });
     } catch (error) {
       console.error('REGISTRATION ERROR', error);

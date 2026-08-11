@@ -4,23 +4,23 @@ import { isOnline } from '@/src/sync/networkMonitor';
 import { getPendingQueueItems } from '@/src/sync/syncQueue';
 import { syncNow } from '@/src/sync/syncService';
 import {
-  borderRadius,
-  colors,
-  fonts,
-  globalStyles,
-  spacing,
-  typography
+    borderRadius,
+    colors,
+    fonts,
+    globalStyles,
+    spacing,
+    typography
 } from '@/styles/global';
 import { FontAwesome6, Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -203,7 +203,7 @@ export default function HomeScreen() {
                 icon="heart"
                 label="Record Vital Signs"
                 color="#c62828"
-                onPress={() => {}}
+                onPress={() => router.push('/record-vital-signs')}
               />
               <QuickActionCard
                 icon="medical"

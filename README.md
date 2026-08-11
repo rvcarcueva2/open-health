@@ -1,6 +1,6 @@
-# Open Health
+Chris 
 
-An offline-first healthcare application for community health workers in the Philippines, built with React Native (Expo), SQLite, and HAPI FHIR R4.
+Community Health Records and Information System is an offline-first healthcare application for community health workers in the Philippines, built with React Native (Expo), SQLite, and HAPI FHIR R4.
 
 ---
 
@@ -397,20 +397,14 @@ Backend HAPI FHIR server address is configured in `src/constants/api.ts`:
 export const API_URL = 'http://192.168.254.162:8080/fhir';
 ```
 
----
-
-## Validation Rules
-
-| Field | Rule |
-|-------|------|
-| First Name | Required |
-| Last Name | Required |
-| Sex | Required, must be `male`, `female`, `other`, or `unknown` |
-| Birth Date | Required, valid date, cannot be in the future |
-| Mobile Number | Optional, must match PH format (`09XX` or `+63`) |
-| Email | Optional, must be valid email format |
 
 ---
+## Resources Terms
+Patient = Who is receiving care?
+Group = Who belongs together?
+Encounter = When did care happen?
+Observation = What was measured?
+
 
 ## References
 

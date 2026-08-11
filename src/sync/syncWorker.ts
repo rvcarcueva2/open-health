@@ -1,14 +1,14 @@
 import { API_URL } from '../constants/api';
 
 import {
-  getPendingQueueItems,
-  markQueueItemCompleted,
-  markQueueItemFailed,
+    getPendingQueueItems,
+    markQueueItemCompleted,
+    markQueueItemFailed,
 } from './syncQueue';
 
 import {
-  getResourceById,
-  markResourceSynced,
+    getResourceById,
+    markResourceSynced,
 } from '../db/resourceRepository';
 
 export async function processQueue() {
@@ -18,209 +18,215 @@ export async function processQueue() {
     `SYNC STARTED - ${queueItems.length} pending item(s)`
   );
 
-  for (const item of queueItems) {
+  if (queueItems.length === 0) {
+    console.log('SYNC FINISHED - nothing to sync');
+    return;
+  }
+
+  // Group items by operation type
+  const createItems = queueItems.filter((i) => i.operation === 'CREATE');
+  const updateItems = queueItems.filter((i) => i.operation === 'UPDATE');
+  const deleteItems = queueItems.filter((i) => i.operation === 'DELETE');
+
+  // Process deletes individually
+  for (const item of deleteItems) {
     try {
-      console.log(
-        `PROCESSING QUEUE ITEM: ${item.id}`
-      );
-
-      const resource = await getResourceById(
-        item.resourceId
-      );
-
+      const resource = await getResourceById(item.resourceId);
       if (!resource) {
-        console.error(
-          `RESOURCE NOT FOUND: ${item.resourceId}`
-        );
-
         await markQueueItemFailed(item.id);
         continue;
       }
-
       const body = JSON.parse(resource.data);
-
-      console.log(
-        'SYNCING RESOURCE:'
-      );
-
-      console.log(
-        JSON.stringify(body, null, 2)
-      );
-
-      switch (item.operation) {
-        case 'CREATE':
-          await syncCreate(body);
-          break;
-
-        case 'UPDATE':
-          await syncUpdate(body);
-          break;
-
-        case 'DELETE':
-          await syncDelete(body);
-          break;
-
-        default:
-          throw new Error(
-            `Unsupported operation: ${item.operation}`
-          );
-      }
-
-      await markResourceSynced(
-        item.resourceId
-      );
-
-      await markQueueItemCompleted(
-        item.id
-      );
-
-      console.log(
-        `SYNC SUCCESS: ${item.resourceId}`
-      );
+      await syncDelete(body);
+      await markResourceSynced(item.resourceId);
+      await markQueueItemCompleted(item.id);
+      console.log(`SYNC DELETE SUCCESS: ${item.resourceId}`);
     } catch (error) {
-      console.error(
-        `SYNC FAILED: ${item.id}`
-      );
-
-      console.error(error);
-
-      await markQueueItemFailed(
-        item.id
-      );
+      console.error(`SYNC DELETE FAILED: ${item.id}`, error);
+      await markQueueItemFailed(item.id);
     }
+  }
+
+  // Process creates as a transaction bundle
+  if (createItems.length > 0) {
+    await syncAsTransaction(createItems, 'PUT');
+  }
+
+  // Process updates as a transaction bundle
+  if (updateItems.length > 0) {
+    await syncAsTransaction(updateItems, 'PUT');
   }
 
   console.log('SYNC FINISHED');
 }
 
-async function syncCreate(
-  resource: any
+/**
+ * Syncs a group of queue items as a FHIR Transaction Bundle.
+ * This ensures all resources are created atomically and references resolve correctly.
+ * Also includes any referenced resources (Patient, Encounter) that may not be in the queue
+ * but are needed for reference resolution.
+ */
+async function syncAsTransaction(
+  items: Awaited<ReturnType<typeof getPendingQueueItems>>,
+  method: 'PUT' | 'POST'
 ) {
-  const url =
-    `${API_URL}/${resource.resourceType}`;
+  // Build bundle entries
+  const entries: any[] = [];
+  const validItems: typeof items = [];
+  const includedIds = new Set<string>();
 
-  console.log(
-    `POST ${url}`
-  );
+  for (const item of items) {
+    const resource = await getResourceById(item.resourceId);
+    if (!resource) {
+      console.error(`RESOURCE NOT FOUND: ${item.resourceId}`);
+      await markQueueItemFailed(item.id);
+      continue;
+    }
 
-  console.log(
-    'REQUEST BODY:'
-  );
+    const body = JSON.parse(resource.data);
+    entries.push({
+      fullUrl: `${body.resourceType}/${body.id}`,
+      resource: body,
+      request: {
+        method: method,
+        url: `${body.resourceType}/${body.id}`,
+      },
+    });
+    includedIds.add(body.id);
+    validItems.push(item);
+  }
 
-  console.log(
-    JSON.stringify(resource, null, 2)
-  );
+  if (entries.length === 0) return;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type':
-        'application/fhir+json',
-      Accept:
-        'application/fhir+json',
-    },
-    body: JSON.stringify(resource),
+  // Find and include any referenced resources not already in the bundle
+  // This handles the case where a Patient was previously synced via POST
+  // but needs to be PUT with our local ID for references to resolve
+  for (const entry of [...entries]) {
+    const res = entry.resource;
+
+    // Check subject reference
+    const subjectRef = res.subject?.reference;
+    if (subjectRef) {
+      const refId = subjectRef.split('/')[1];
+      if (refId && !includedIds.has(refId)) {
+        const refResource = await getResourceById(refId);
+        if (refResource) {
+          const refBody = JSON.parse(refResource.data);
+          entries.push({
+            fullUrl: `${refBody.resourceType}/${refBody.id}`,
+            resource: refBody,
+            request: {
+              method: 'PUT',
+              url: `${refBody.resourceType}/${refBody.id}`,
+            },
+          });
+          includedIds.add(refId);
+          console.log(`INCLUDING REFERENCED RESOURCE: ${refBody.resourceType}/${refBody.id}`);
+        }
+      }
+    }
+
+    // Check encounter reference
+    const encounterRef = res.encounter?.reference;
+    if (encounterRef) {
+      const refId = encounterRef.split('/')[1];
+      if (refId && !includedIds.has(refId)) {
+        const refResource = await getResourceById(refId);
+        if (refResource) {
+          const refBody = JSON.parse(refResource.data);
+          entries.push({
+            fullUrl: `${refBody.resourceType}/${refBody.id}`,
+            resource: refBody,
+            request: {
+              method: 'PUT',
+              url: `${refBody.resourceType}/${refBody.id}`,
+            },
+          });
+          includedIds.add(refId);
+          console.log(`INCLUDING REFERENCED RESOURCE: ${refBody.resourceType}/${refBody.id}`);
+        }
+      }
+    }
+  }
+
+  // Sort entries: Patient first, then Encounter, then Observation, then others
+  entries.sort((a, b) => {
+    const order = (type: string) => {
+      switch (type) {
+        case 'Patient': return 1;
+        case 'Encounter': return 2;
+        case 'Observation': return 3;
+        default: return 4;
+      }
+    };
+    return order(a.resource.resourceType) - order(b.resource.resourceType);
   });
 
-  const responseText =
-    await response.text();
+  const bundle = {
+    resourceType: 'Bundle',
+    type: 'transaction',
+    entry: entries,
+  };
 
+  console.log(`SYNCING TRANSACTION BUNDLE: ${entries.length} entries`);
   console.log(
-    `RESPONSE STATUS: ${response.status}`
+    'Resource types:',
+    entries.map((e) => `${e.resource.resourceType}/${e.resource.id}`).join(', ')
   );
 
-  console.log(
-    'RESPONSE BODY:'
-  );
+  try {
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/fhir+json',
+        Accept: 'application/fhir+json',
+      },
+      body: JSON.stringify(bundle),
+    });
 
-  console.log(responseText);
+    const responseText = await response.text();
 
-  if (!response.ok) {
-    throw new Error(
-      `CREATE failed: ${response.status}\n${responseText}`
-    );
+    console.log(`TRANSACTION RESPONSE STATUS: ${response.status}`);
+    console.log('TRANSACTION RESPONSE BODY:', responseText);
+
+    if (response.ok) {
+      // Mark all items as completed
+      for (const item of validItems) {
+        await markResourceSynced(item.resourceId);
+        await markQueueItemCompleted(item.id);
+      }
+      console.log(`TRANSACTION SUCCESS: ${validItems.length} resources synced`);
+    } else {
+      // Transaction failed - mark all as failed
+      console.error(`TRANSACTION FAILED: ${response.status}`);
+      for (const item of validItems) {
+        await markQueueItemFailed(item.id);
+      }
+    }
+  } catch (error) {
+    console.error('TRANSACTION ERROR:', error);
+    for (const item of validItems) {
+      await markQueueItemFailed(item.id);
+    }
   }
 }
 
-async function syncUpdate(
-  resource: any
-) {
-  const url =
-    `${API_URL}/${resource.resourceType}/${resource.id}`;
+async function syncDelete(resource: any) {
+  const url = `${API_URL}/${resource.resourceType}/${resource.id}`;
 
-  console.log(
-    `PUT ${url}`
-  );
-
-  console.log(
-    'REQUEST BODY:'
-  );
-
-  console.log(
-    JSON.stringify(resource, null, 2)
-  );
-
-  const response = await fetch(url, {
-    method: 'PUT',
-    headers: {
-      'Content-Type':
-        'application/fhir+json',
-      Accept:
-        'application/fhir+json',
-    },
-    body: JSON.stringify(resource),
-  });
-
-  const responseText =
-    await response.text();
-
-  console.log(
-    `RESPONSE STATUS: ${response.status}`
-  );
-
-  console.log(
-    'RESPONSE BODY:'
-  );
-
-  console.log(responseText);
-
-  if (!response.ok) {
-    throw new Error(
-      `UPDATE failed: ${response.status}\n${responseText}`
-    );
-  }
-}
-
-async function syncDelete(
-  resource: any
-) {
-  const url =
-    `${API_URL}/${resource.resourceType}/${resource.id}`;
-
-  console.log(
-    `DELETE ${url}`
-  );
+  console.log(`DELETE ${url}`);
 
   const response = await fetch(url, {
     method: 'DELETE',
     headers: {
-      Accept:
-        'application/fhir+json',
+      Accept: 'application/fhir+json',
     },
   });
 
-  const responseText =
-    await response.text();
+  const responseText = await response.text();
 
-  console.log(
-    `RESPONSE STATUS: ${response.status}`
-  );
-
-  console.log(
-    'RESPONSE BODY:'
-  );
-
-  console.log(responseText);
+  console.log(`RESPONSE STATUS: ${response.status}`);
+  console.log('RESPONSE BODY:', responseText);
 
   if (!response.ok) {
     throw new Error(
