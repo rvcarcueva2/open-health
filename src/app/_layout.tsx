@@ -1,9 +1,11 @@
 import { runMigrations } from '@/src/db/migrations';
+import { colors } from '@/styles/global';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { View } from 'react-native';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -26,14 +28,15 @@ export default function RootLayout() {
     }
   }, [fontsLoaded]);
 
+  // White background placeholder while fonts load
   if (!fontsLoaded) {
-    return null;
+    return <View style={{ flex: 1, backgroundColor: '#ffffff' }} />;
   }
 
   return (
-    <>
+    <View style={{ flex: 1, backgroundColor: '#ffffff' }}>
       <StatusBar style="dark" />
-      <Stack screenOptions={{ headerShown: false }}>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen
           name="register-patient"
@@ -44,7 +47,15 @@ export default function RootLayout() {
           options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
         />
         <Stack.Screen
+          name="record-vital-signs"
+          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+        />
+        <Stack.Screen
           name="patient/[id]"
+          options={{ animation: 'ios_from_right' }}
+        />
+        <Stack.Screen
+          name="patient/[id]/vital-signs-history"
           options={{ animation: 'ios_from_right' }}
         />
         <Stack.Screen
@@ -52,6 +63,6 @@ export default function RootLayout() {
           options={{ animation: 'ios_from_right' }}
         />
       </Stack>
-    </>
+    </View>
   );
 }
