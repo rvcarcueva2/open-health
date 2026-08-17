@@ -400,10 +400,10 @@ export const API_URL = 'http://192.168.254.162:8080/fhir';
 
 ---
 ## Resources Terms
-Patient = Who is receiving care?
-Group = Who belongs together?
-Encounter = When did care happen?
-Observation = What was measured?
+- Patient = Who is receiving care?
+- Group = Who belongs together?
+- Encounter = When did care happen?
+- Observation = What was measured?
 
 ## OpenHIM
 
