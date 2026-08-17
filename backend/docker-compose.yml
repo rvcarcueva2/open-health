@@ -1,21 +1,134 @@
 services:
+  # ===========================================
+  # HAPI FHIR Server
+  # ===========================================
   hapi-fhir:
     image: hapiproject/hapi:latest
     container_name: hapi-fhir
     user: root
-
     environment:
-      SPRING_DATASOURCE_URL: jdbc:h2:file:/data/hapi;DB_CLOSE_DELAY=-1
-      SPRING_DATASOURCE_USERNAME: sa
-      SPRING_DATASOURCE_PASSWORD:
-      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.h2.Driver
-      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.H2Dialect
-
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/hapi
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: admin
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+      HAPI_FHIR_SUBSCRIPTION_RESTHOOK_ENABLED: "true"
+      HAPI_FHIR_SUBSCRIPTION_WEBSOCKET_ENABLED: "false"
     volumes:
       - hapi-data:/data
-
+      - ./hapi/application.yaml:/app/config/application.yaml:ro
     ports:
       - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - openhim-network
+
+  # ===========================================
+  # PostgreSQL (shared by HAPI FHIR & OpenHIM)
+  # ===========================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - openhim-network
+
+  # ===========================================
+  # MongoDB (required by OpenHIM Core)
+  # ===========================================
+  mongo:
+    image: mongo:4.4
+    container_name: openhim-mongo
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - openhim-network
+
+  # ===========================================
+  # OpenHIM Core
+  # ===========================================
+  openhim-core:
+    image: jembi/openhim-core:latest
+    container_name: openhim-core
+    environment:
+      - mongo_url=mongodb://mongo/openhim
+      - mongo_atnaUrl=mongodb://mongo/openhim
+    ports:
+      - "5000:5000"   # HTTPS API
+      - "5001:5001"   # HTTPS Transaction API
+      - "5544:5544"   # HTTP (mediator communication)
+      - "8081:8080"   # HTTP (incoming requests)
+    depends_on:
+      - mongo
+    healthcheck:
+      test: ["CMD", "curl", "-sk", "https://localhost:8080/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - openhim-network
+
+  # ===========================================
+  # OpenHIM Console (Admin UI)
+  # ===========================================
+  openhim-console:
+    image: jembi/openhim-console:latest
+    container_name: openhim-console
+    volumes:
+      - ./openhim/default.json:/usr/share/nginx/html/config/default.json:ro
+    ports:
+      - "9000:80"
+    depends_on:
+      - openhim-core
+    networks:
+      - openhim-network
+
+  # ===========================================
+  # Frappe-to-FHIR Mediator
+  # ===========================================
+  frappe-fhir-mediator:
+    build:
+      context: ./mediator
+      dockerfile: Dockerfile
+    container_name: frappe-fhir-mediator
+    environment:
+      - FHIR_BASE_URL=http://hapi-fhir:8080/fhir
+      - OPENHIM_CORE_URL=https://openhim-core:8080
+      - OPENHIM_USERNAME=root@openhim.org
+      - OPENHIM_PASSWORD=apc-open-health
+      - MEDIATOR_PORT=3000
+      - ENABLE_FHIR_TO_FRAPPE=true
+      - FRAPPE_URL=http://host.docker.internal:8083
+      - FRAPPE_USERNAME=Administrator
+      - FRAPPE_PASSWORD=admin
+      - POLL_INTERVAL_MS=30000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - openhim-core
+      - hapi-fhir
+    networks:
+      - openhim-network
 
 volumes:
   hapi-data:
+  postgres-data:
+  mongo-data:
+
+networks:
+  openhim-network:
+    driver: bridge

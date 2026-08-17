@@ -1,6 +1,9 @@
 hapi:
   fhir:
     version: R4
+    subscription:
+      resthook_enabled: true
+      websocket_enabled: false
 
 spring:
   datasource:

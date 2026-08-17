@@ -27,7 +27,7 @@ Community Health Records and Information System is an offline-first healthcare a
 
 ```bash
 npm install
-npx expo start
+npx expo start --port 8084
 ```
 
 Open on:
@@ -404,6 +404,293 @@ Patient = Who is receiving care?
 Group = Who belongs together?
 Encounter = When did care happen?
 Observation = What was measured?
+
+## OpenHIM
+
+### Overview
+
+[OpenHIM](http://openhim.org/) (Open Health Information Mediator) is the interoperability layer that connects CHRIS and Frappe Health (Marley Health) through HAPI FHIR. It provides a centralized audit trail, transaction logging, and routing for all health data exchange between systems.
+
+### Architecture
+
+```
+┌─────────────────────┐                    ┌──────────────────┐
+│   CHRIS Mobile App  │                    │   Frappe Health   │
+│  (React Native)     │                    │  (Marley Health)  │
+└──────────┬──────────┘                    └────────┬─────────┘
+           │                                        │
+           │ Direct sync                            │ Webhooks
+           ▼                                        ▼
+┌─────────────────────┐         ┌──────────────────────────────┐
+│    HAPI FHIR R4     │◄───────►│         OpenHIM Core         │
+│   (port 8080)       │         │   (Transaction Router +      │
+│                     │         │    Audit Trail)               │
+│   PostgreSQL        │         │   ports: 5001 HTTP, 8081 API │
+└─────────────────────┘         └──────────────┬───────────────┘
+                                               │
+                                               ▼
+                                ┌──────────────────────────────┐
+                                │   Frappe-FHIR Mediator        │
+                                │   (Bidirectional Transformer) │
+                                │   port: 3000                  │
+                                └──────────────────────────────┘
+```
+
+### Data Flow — Bidirectional Sync
+
+#### Direction 1: CHRIS → HAPI FHIR → OpenHIM → Frappe Health
+
+This is the primary flow when a Community Health Worker registers a patient in the CHRIS mobile app.
+
+```
+1. User creates patient in CHRIS app
+2. Patient saved to SQLite (offline-first)
+3. Sync queue processes when online
+4. Patient POSTed directly to HAPI FHIR (port 8080)
+5. Poller (every 30s) detects new/updated Patient in HAPI FHIR
+6. Poller sends FHIR Patient to OpenHIM (/reverse/patient)
+7. OpenHIM logs the transaction and routes to Mediator
+8. Mediator transforms FHIR R4 Patient → Frappe Patient DocType
+9. Mediator creates Patient in Frappe Health via REST API
+```
+
+**Loop Prevention:** Patients that originated from Frappe (identified by `http://frappe.health/patient` identifier system) are skipped by the poller to prevent infinite sync loops.
+
+#### Direction 2: Frappe Health → OpenHIM → HAPI FHIR
+
+This flow handles data created by clinicians or administrators in Frappe Health.
+
+```
+1. Clinician creates/updates patient in Frappe Health
+2. Frappe webhook fires POST to OpenHIM (port 5001)
+3. OpenHIM logs the transaction and routes to Mediator
+4. Mediator transforms Frappe Patient DocType → FHIR R4 Patient
+5. Mediator checks if patient exists in HAPI FHIR (by Frappe identifier)
+6. Creates or updates the FHIR Patient in HAPI FHIR
+7. CHRIS app picks up changes on next sync
+```
+
+### Resource Mapping
+
+#### FHIR Patient → Frappe Patient
+
+| FHIR R4 Field | Frappe Health Field |
+|---|---|
+| `name[0].given[0]` | `first_name` |
+| `name[0].given[1]` | `middle_name` |
+| `name[0].family` | `last_name` |
+| `gender` (male/female/other) | `sex` (Male/Female/Other) |
+| `birthDate` | `dob` |
+| `telecom[phone].value` | `mobile` |
+| `telecom[email].value` | `email` |
+| `active` (true/false) | `status` (Active/Disabled) |
+| `address[0].line[0]` | `address_line1` |
+| `address[0].city` | `city` |
+| `address[0].state` | `state` |
+| `address[0].country` | `country` (mapped: PH → Philippines) |
+| `address[0].postalCode` | `pincode` |
+| `id` | `custom_fhir_id` (for deduplication) |
+
+#### Frappe Patient → FHIR Patient
+
+| Frappe Health Field | FHIR R4 Field |
+|---|---|
+| `name` (document ID) | `identifier[0].value` (system: `http://frappe.health/patient`) |
+| `first_name` | `name[0].given[0]` |
+| `middle_name` | `name[0].given[1]` |
+| `last_name` | `name[0].family` |
+| `sex` | `gender` |
+| `dob` | `birthDate` |
+| `mobile` | `telecom[0]` (system: phone, use: mobile) |
+| `email` | `telecom[1]` (system: email) |
+| `status` (1=active) | `active` (boolean) |
+| `address_*` fields | `address[0].*` |
+
+### OpenHIM Channels
+
+| Channel Name | URL Pattern | Direction | Purpose |
+|---|---|---|---|
+| Frappe Patient to FHIR | `/frappe/patient` | Frappe → FHIR | Forward patient sync |
+| Frappe Encounter to FHIR | `/frappe/encounter` | Frappe → FHIR | Forward encounter sync |
+| Frappe Observation to FHIR | `/frappe/observation` | Frappe → FHIR | Forward vitals sync |
+| FHIR to Frappe Patient | `/reverse/patient` | FHIR → Frappe | Reverse patient sync |
+| FHIR Subscription Notifications | `/reverse/notification` | FHIR → Frappe | Subscription handler |
+
+### Services & Ports
+
+| Service | Port | Protocol | Purpose |
+|---|---|---|---|
+| HAPI FHIR | 8080 | HTTP | FHIR R4 REST API |
+| PostgreSQL | 5432 | TCP | HAPI FHIR database |
+| OpenHIM Core (API) | 8081 | HTTPS | Admin API (Console connects here) |
+| OpenHIM Core (HTTP) | 5001 | HTTP | Transaction routing (webhooks hit here) |
+| OpenHIM Console | 9000 | HTTP | Admin web UI |
+| Mediator | 3000 | HTTP | Bidirectional transformation service |
+| MongoDB | 27017 | TCP | OpenHIM transaction store |
+
+### Mediator Endpoints
+
+#### Forward (Frappe → FHIR)
+
+```
+POST /mediate/patient       - Transform Frappe Patient → FHIR Patient
+POST /mediate/encounter     - Transform Frappe Encounter → FHIR Encounter
+POST /mediate/observation   - Transform Frappe Vital Signs → FHIR Observations
+DELETE /mediate/patient      - Delete FHIR Patient by Frappe ID
+```
+
+#### Reverse (FHIR → Frappe)
+
+```
+POST /reverse/patient       - Transform FHIR Patient → Frappe Patient
+POST /reverse/encounter     - Transform FHIR Encounter → Frappe Encounter
+POST /reverse/notification  - FHIR Subscription notification handler
+```
+
+#### Utility
+
+```
+GET /health                 - Health check and status
+```
+
+### Polling Mechanism
+
+The mediator runs a polling loop every 30 seconds that:
+
+1. Queries HAPI FHIR: `GET /Patient?_lastUpdated=gt{lastPollTime}&_count=50`
+2. Filters out patients with `http://frappe.health/patient` identifier (originated from Frappe)
+3. Sends remaining patients through OpenHIM → Mediator → Frappe Health
+4. Tracks `lastPollTime` to only process new changes
+
+### Console Access
+
+```
+URL:      http://localhost:9000
+Email:    root@openhim.org
+Password: apc-open-health
+```
+
+On first access, accept the self-signed certificate at `https://localhost:8081` before logging in.
+
+### Quick Start
+
+```bash
+cd backend
+
+# Start all services
+docker compose up -d
+
+# Wait for services to be healthy (~30 seconds)
+docker compose ps
+
+# Configure OpenHIM (create client + channels)
+cd mediator
+npm install
+node src/setup/configure-openhim.js apc-open-health
+
+# Test the forward direction (Frappe → FHIR)
+Invoke-RestMethod -Uri "http://localhost:5001/frappe/patient" -Method Post `
+  -ContentType "application/json" `
+  -Body '{"name":"TEST-001","first_name":"Test","last_name":"Patient","sex":"Male","dob":"2000-01-01","status":1}'
+
+# Test the reverse direction (FHIR → Frappe)
+# Create a patient in HAPI FHIR and wait 30 seconds for the poller
+Invoke-RestMethod -Uri "http://localhost:8080/fhir/Patient" -Method Post `
+  -ContentType "application/fhir+json" `
+  -Body '{"resourceType":"Patient","active":true,"name":[{"family":"Test","given":["Reverse"]}],"gender":"male"}'
+```
+
+### Connecting Frappe Health Webhooks
+
+In your Frappe Health instance, configure webhooks on the Patient DocType:
+
+1. Go to **Setup → Webhook → + Add Webhook**
+2. Set DocType: `Patient`
+3. Set Event: `after_insert` (and/or `on_update`)
+4. Set URL: `http://<your-server-ip>:5001/frappe/patient`
+5. Set method: `POST`
+6. Map fields to the expected JSON payload
+
+See `backend/frappe-integration/webhook-config.md` for detailed field mapping.
+
+### Troubleshooting
+
+```bash
+# View mediator logs
+docker logs frappe-fhir-mediator -f
+
+# View OpenHIM Core logs
+docker logs openhim-core -f
+
+# View HAPI FHIR logs
+docker logs hapi-fhir -f
+
+# Restart mediator after code changes
+docker compose up -d --build frappe-fhir-mediator
+
+# Reset everything (WARNING: deletes all data)
+docker compose down -v
+docker compose up -d
+```
+
+| Problem | Solution |
+|---|---|
+| Console shows "Cannot connect to Core" | Accept self-signed cert at `https://localhost:8081` first |
+| 401 Unauthorized on `/frappe/*` | Channels must be set to `authType: public` or configure client auth |
+| Country code errors in Frappe | Mediator maps `PH` → `Philippines` automatically |
+| Patients not appearing in Frappe | Check mediator logs for field validation errors |
+| Duplicate patients in Frappe | Add `custom_fhir_id` custom field to Patient DocType in Frappe |
+| Poller not syncing | Verify HAPI FHIR is reachable from mediator container |
+
+### Directory Structure
+
+```
+backend/
+├── docker-compose.yml              # All services (HAPI, PostgreSQL, OpenHIM, Mediator)
+├── .env.example                    # Environment variables template
+│
+├── hapi/
+│   └── application.yaml            # HAPI FHIR config (subscriptions enabled)
+│
+├── postgres/
+│   └── init-databases.sql          # Creates 'hapi' database
+│
+├── openhim/
+│   └── default.json                # Console config (points to Core on port 8081)
+│
+├── mediator/
+│   ├── Dockerfile
+│   ├── package.json
+│   └── src/
+│       ├── index.js                # Express server (bidirectional routes + poller)
+│       ├── openhim.js              # OpenHIM registration
+│       ├── fhirClient.js           # HAPI FHIR HTTP client
+│       ├── frappeClient.js         # Frappe Health HTTP client
+│       ├── routes/
+│       │   ├── patient.js          # Frappe → FHIR Patient
+│       │   ├── encounter.js        # Frappe → FHIR Encounter
+│       │   ├── observation.js      # Frappe → FHIR Observations
+│       │   └── fhir-to-frappe.js   # FHIR → Frappe (reverse)
+│       ├── sync/
+│       │   └── fhirPoller.js       # Polls HAPI FHIR, pushes to Frappe via OpenHIM
+│       └── setup/
+│           └── configure-openhim.js # Creates client + channels
+│
+├── frappe-integration/
+│   ├── webhook-config.md           # Frappe webhook setup guide
+│   └── openhim_connector/          # Custom Frappe app (Python)
+│       ├── hooks.py
+│       └── sync/
+│           ├── config.py
+│           ├── patient.py
+│           ├── encounter.py
+│           ├── observation.py
+│           └── queue.py            # Retry queue with scheduler
+│
+└── scripts/
+    ├── test-mediator.ps1           # PowerShell test script
+    └── test-mediator.sh            # Bash test script
+```
 
 
 ## References
