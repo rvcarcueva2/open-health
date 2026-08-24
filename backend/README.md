@@ -47,7 +47,22 @@ docker compose ps
 
 All services should show "healthy" or "running".
 
-### 3. Configure OpenHIM
+### 3. Generate OpenCR Certificates
+
+OpenCR requires TLS certificates (HTTPS only). These are `.gitignored` — each developer generates their own:
+
+```bash
+cd opencr
+bash generate-certs.sh
+cd ..
+```
+
+Then restart OpenCR if it was already started:
+```bash
+docker compose restart opencr
+```
+
+### 4. Configure OpenHIM
 
 ```bash
 cd mediator
@@ -57,7 +72,7 @@ node src/setup/configure-openhim.js
 
 This creates the client credentials and channels in OpenHIM.
 
-### 4. Test the mediator
+### 5. Test the mediator
 
 **PowerShell (Windows):**
 ```powershell
@@ -83,6 +98,9 @@ chmod +x scripts/test-mediator.sh
 | OpenHIM Core (Mediator Comms) | 5544 | http://localhost:5544 |
 | OpenHIM Console | 9000 | http://localhost:9000 |
 | Frappe-FHIR Mediator | 3000 | http://localhost:3000 |
+| OpenCR (MPI) | 3004 | https://localhost:3004/crux/ |
+| OpenCR HAPI FHIR | 8090 | http://localhost:8090/fhir |
+| OpenSearch | 9200 | http://localhost:9200 |
 
 ---
 
@@ -190,7 +208,6 @@ docker compose up -d
 ```
 backend/
 ├── docker-compose.yml          # All services
-├── .env.example                # Environment variables template
 ├── README.md                   # This file
 │
 ├── hapi/
@@ -201,6 +218,18 @@ backend/
 │
 ├── openhim/
 │   └── default.json            # OpenHIM Console config
+│
+├── opencr/                     # Client Registry / Master Patient Index
+│   ├── README.md               # Detailed OpenCR documentation
+│   ├── config.json             # OpenCR main configuration
+│   ├── decisionRules.json      # Patient matching rules
+│   ├── entrypoint.sh           # Container startup patches
+│   ├── generate-certs.sh       # TLS certificate generator (run once per dev)
+│   ├── Dockerfile.opensearch   # Custom OpenSearch with plugins
+│   └── certs/                  # TLS certs (.gitignored, generate locally)
+│       ├── .gitkeep
+│       ├── server_cert.pem     # ← generated, not committed
+│       └── server_key.pem      # ← generated, not committed
 │
 ├── mediator/
 │   ├── Dockerfile
@@ -228,6 +257,6 @@ backend/
 │           └── queue.py
 │
 └── scripts/
-    ├── test-mediator.sh        # Test script (bash)
-    └── test-mediator.ps1       # Test script (PowerShell)
+    ├── importTerminology.sh    # FHIR terminology import
+    └── seedPatients.sh         # Seed test patients
 ```

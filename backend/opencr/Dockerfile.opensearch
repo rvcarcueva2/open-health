@@ -1,0 +1,4 @@
+FROM opensearchproject/opensearch:2
+
+# Install analysis-phonetic plugin required by OpenCR
+RUN bin/opensearch-plugin install analysis-phonetic

@@ -47,24 +47,174 @@ export async function processQueue() {
     }
   }
 
-  // Process creates as a transaction bundle
+  // Process creates — Patients go through OpenCR, others as transaction bundle
   if (createItems.length > 0) {
-    await syncAsTransaction(createItems, 'PUT');
+    await syncWithOpenCRRouting(createItems, 'PUT');
   }
 
-  // Process updates as a transaction bundle
+  // Process updates — same routing logic
   if (updateItems.length > 0) {
-    await syncAsTransaction(updateItems, 'PUT');
+    await syncWithOpenCRRouting(updateItems, 'PUT');
   }
 
   console.log('SYNC FINISHED');
 }
 
 /**
- * Syncs a group of queue items as a FHIR Transaction Bundle.
- * This ensures all resources are created atomically and references resolve correctly.
- * Also includes any referenced resources (Patient, Encounter) that may not be in the queue
- * but are needed for reference resolution.
+ * Syncs queue items with OpenCR routing:
+ * - Patient resources are sent individually to /fhir/Patient so OpenHIM routes them to OpenCR
+ * - All other resources are bundled in a transaction and sent to /fhir (routed to HAPI FHIR)
+ * 
+ * Flow:
+ *   Patient → OpenHIM → OpenCR (deduplication + golden record) → stored in OpenCR HAPI FHIR
+ *   Others  → OpenHIM → HAPI FHIR (direct pass-through)
+ */
+async function syncWithOpenCRRouting(
+  items: Awaited<ReturnType<typeof getPendingQueueItems>>,
+  method: 'PUT' | 'POST'
+) {
+  // Separate Patient items from non-Patient items
+  const patientItems: typeof items = [];
+  const otherItems: typeof items = [];
+
+  for (const item of items) {
+    const resource = await getResourceById(item.resourceId);
+    if (!resource) {
+      console.error(`RESOURCE NOT FOUND: ${item.resourceId}`);
+      await markQueueItemFailed(item.id);
+      continue;
+    }
+
+    const body = JSON.parse(resource.data);
+    if (body.resourceType === 'Patient') {
+      patientItems.push(item);
+    } else {
+      otherItems.push(item);
+    }
+  }
+
+  // Step 1: Sync Patients individually through OpenCR
+  // Must complete before other resources because Encounters/Observations reference Patient IDs
+  for (const item of patientItems) {
+    try {
+      await syncPatientToOpenCR(item);
+    } catch (error) {
+      console.error(`SYNC PATIENT FAILED: ${item.resourceId}`, error);
+      await markQueueItemFailed(item.id);
+    }
+  }
+
+  // Step 2: Sync remaining resources as a transaction bundle to HAPI FHIR
+  if (otherItems.length > 0) {
+    await syncAsTransaction(otherItems, method);
+  }
+}
+
+/**
+ * Sends a single Patient resource to OpenHIM's /fhir/Patient endpoint.
+ * OpenHIM channel matches POST/PUT /fhir/Patient and routes to OpenCR.
+ * OpenCR performs deduplication, assigns/links a golden record.
+ */
+async function syncPatientToOpenCR(
+  item: Awaited<ReturnType<typeof getPendingQueueItems>>[0]
+) {
+  const resource = await getResourceById(item.resourceId);
+  if (!resource) {
+    await markQueueItemFailed(item.id);
+    return;
+  }
+
+  const body = JSON.parse(resource.data);
+
+  // Ensure the Patient has the internalid required by OpenCR
+  if (!hasInternalId(body)) {
+    body.identifier = body.identifier || [];
+    body.identifier.push({
+      system: 'http://openclientregistry.org/fhir/internalid',
+      value: body.id,
+    });
+  }
+
+  const url = `${API_URL}/Patient`;
+
+  console.log(`SYNCING PATIENT TO OPENCR: ${body.id}`);
+  console.log(`  Name: ${formatPatientName(body)}`);
+  console.log(`  URL: POST ${url}`);
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/fhir+json',
+        Accept: 'application/fhir+json',
+        'x-openhim-clientid': 'chris-mobile',
+      },
+      body: JSON.stringify(body),
+    });
+
+    const responseText = await response.text();
+
+    console.log(`  RESPONSE STATUS: ${response.status}`);
+    console.log(`  RESPONSE BODY: ${responseText.substring(0, 300)}`);
+
+    if (response.ok) {
+      await markResourceSynced(item.resourceId);
+      await markQueueItemCompleted(item.id);
+      console.log(`  ✓ PATIENT SYNCED VIA OPENCR: ${item.resourceId}`);
+
+      // Log golden record link if present in response
+      try {
+        const responseBody = JSON.parse(responseText);
+        if (responseBody.link) {
+          console.log(`  GOLDEN RECORD: ${responseBody.link[0]?.other?.reference}`);
+        }
+        if (responseBody.entry) {
+          const goldenLinks = responseBody.entry
+            .filter((e: any) => e.resource?.link)
+            .flatMap((e: any) => e.resource.link)
+            .map((l: any) => l.other?.reference);
+          if (goldenLinks.length > 0) {
+            console.log(`  GOLDEN RECORD: ${goldenLinks[0]}`);
+          }
+        }
+      } catch {
+        // Response parsing is optional — sync still succeeded
+      }
+    } else {
+      console.error(`  ✗ PATIENT SYNC FAILED: ${response.status}`);
+      await markQueueItemFailed(item.id);
+    }
+  } catch (error) {
+    console.error(`  ✗ PATIENT SYNC ERROR:`, error);
+    await markQueueItemFailed(item.id);
+  }
+}
+
+/**
+ * Check if a Patient resource already has the OpenCR internalid identifier
+ */
+function hasInternalId(patient: any): boolean {
+  if (!patient.identifier || !Array.isArray(patient.identifier)) return false;
+  return patient.identifier.some(
+    (id: any) => id.system === 'http://openclientregistry.org/fhir/internalid'
+  );
+}
+
+/**
+ * Format patient name for logging
+ */
+function formatPatientName(patient: any): string {
+  if (!patient.name || patient.name.length === 0) return '(no name)';
+  const name = patient.name[0];
+  const given = (name.given || []).join(' ');
+  return `${given} ${name.family || ''}`.trim();
+}
+
+/**
+ * Syncs non-Patient resources as a FHIR Transaction Bundle.
+ * These go to /fhir (the bundle endpoint) which OpenHIM routes to HAPI FHIR directly.
+ * Also includes any referenced resources (Patient, Encounter) not in the queue
+ * for reference resolution.
  */
 async function syncAsTransaction(
   items: Awaited<ReturnType<typeof getPendingQueueItems>>,
@@ -99,8 +249,6 @@ async function syncAsTransaction(
   if (entries.length === 0) return;
 
   // Find and include any referenced resources not already in the bundle
-  // This handles the case where a Patient was previously synced via POST
-  // but needs to be PUT with our local ID for references to resolve
   for (const entry of [...entries]) {
     const res = entry.resource;
 
@@ -149,7 +297,8 @@ async function syncAsTransaction(
     }
   }
 
-  // Sort entries: Patient first, then Encounter, then Observation, then others
+  // Sort entries: Encounter first, then Observation, then others
+  // (Patients are already synced individually via OpenCR)
   entries.sort((a, b) => {
     const order = (type: string) => {
       switch (type) {
@@ -180,6 +329,7 @@ async function syncAsTransaction(
       headers: {
         'Content-Type': 'application/fhir+json',
         Accept: 'application/fhir+json',
+        'x-openhim-clientid': 'chris-mobile',
       },
       body: JSON.stringify(bundle),
     });
@@ -220,6 +370,7 @@ async function syncDelete(resource: any) {
     method: 'DELETE',
     headers: {
       Accept: 'application/fhir+json',
+      'x-openhim-clientid': 'chris-mobile',
     },
   });
 

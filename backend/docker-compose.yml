@@ -1,6 +1,6 @@
 services:
   # ===========================================
-  # HAPI FHIR Server
+  # HAPI FHIR Server (Main Clinical Data Store)
   # ===========================================
   hapi-fhir:
     image: hapiproject/hapi:latest
@@ -26,7 +26,7 @@ services:
       - openhim-network
 
   # ===========================================
-  # PostgreSQL (shared by HAPI FHIR & OpenHIM)
+  # PostgreSQL (HAPI FHIR database)
   # ===========================================
   postgres:
     image: postgres:15-alpine
@@ -67,6 +67,7 @@ services:
     environment:
       - mongo_url=mongodb://mongo/openhim
       - mongo_atnaUrl=mongodb://mongo/openhim
+      - NODE_TLS_REJECT_UNAUTHORIZED=0  # Dev only: accept OpenCR's self-signed/expired cert
     ports:
       - "5000:5000"   # HTTPS API
       - "5001:5001"   # HTTPS Transaction API
@@ -98,37 +99,110 @@ services:
       - openhim-network
 
   # ===========================================
-  # Frappe-to-FHIR Mediator
+  # OpenCR (Client Registry / MPI)
   # ===========================================
-  frappe-fhir-mediator:
-    build:
-      context: ./mediator
-      dockerfile: Dockerfile
-    container_name: frappe-fhir-mediator
-    environment:
-      - FHIR_BASE_URL=http://hapi-fhir:8080/fhir
-      - OPENHIM_CORE_URL=https://openhim-core:8080
-      - OPENHIM_USERNAME=root@openhim.org
-      - OPENHIM_PASSWORD=apc-open-health
-      - MEDIATOR_PORT=3000
-      - ENABLE_FHIR_TO_FRAPPE=true
-      - FRAPPE_URL=http://host.docker.internal:8083
-      - FRAPPE_USERNAME=Administrator
-      - FRAPPE_PASSWORD=admin
-      - POLL_INTERVAL_MS=30000
+  opencr:
+    image: intrahealth/opencr
+    container_name: opencr
     ports:
-      - "3000:3000"
+      - "3004:3000"
     depends_on:
-      - openhim-core
-      - hapi-fhir
+      - opencr-fhir
+      - opensearch
+    restart: always
+    entrypoint: ["/bin/sh", "/src/server/config/entrypoint.sh"]
+    environment:
+      - NODE_ENV=docker
+      - HAPI_FHIR_URL=http://fhir:8080/fhir/metadata
+    volumes:
+      - ./opencr/config.json:/src/server/config/config_docker.json
+      - ./opencr/decisionRules.json:/src/server/config/decisionRules.json
+      - ./opencr/entrypoint.sh:/src/server/config/entrypoint.sh
+      - ./opencr/certs/server_cert.pem:/src/server/serverCertificates/server_cert.pem
+      - ./opencr/certs/server_key.pem:/src/server/serverCertificates/server_key.pem
     networks:
       - openhim-network
+      - opencr-network
+
+  # ===========================================
+  # OpenCR HAPI FHIR (internal demographics store)
+  # ===========================================
+  opencr-fhir:
+    image: hapiproject/hapi:latest
+    container_name: opencr-fhir
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://opencr-postgres:5432/hapi
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: admin
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+    ports:
+      - "8090:8080"
+    depends_on:
+      opencr-postgres:
+        condition: service_healthy
+    networks:
+      openhim-network:
+      opencr-network:
+        aliases:
+          - fhir
+
+  # ===========================================
+  # PostgreSQL for OpenCR HAPI FHIR
+  # ===========================================
+  opencr-postgres:
+    image: postgres:15-alpine
+    container_name: opencr-postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: hapi
+    volumes:
+      - opencr-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - opencr-network
+
+  # ===========================================
+  # OpenSearch (OpenCR matching engine)
+  # ===========================================
+  opensearch:
+    image: intrahealth/opensearch:latest
+    container_name: opensearch
+    environment:
+      - cluster.name=opencr-cluster
+      - node.name=opensearch-node1
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - plugins.security.disabled=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - opencr-network
 
 volumes:
   hapi-data:
   postgres-data:
   mongo-data:
+  opencr-postgres-data:
+  opensearch-data:
 
 networks:
   openhim-network:
+    driver: bridge
+  opencr-network:
     driver: bridge

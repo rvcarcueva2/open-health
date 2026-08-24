@@ -1,0 +1,78 @@
+{
+  "auth": {
+    "secret": "3084e343-71bc-4247-86e4-ea210af89c28",
+    "tokenDuration": 5400
+  },
+  "app": {
+    "port": 3000,
+    "installed": true
+  },
+  "mediator": {
+    "api": {
+      "username": "root@openhim.org",
+      "password": "apc-open-health",
+      "apiURL": "https://openhim-core:8080",
+      "trustSelfSigned": true,
+      "urn": ""
+    },
+    "register": false
+  },
+  "cronJobs": {
+    "patientReprocessing": "0 21 * * *"
+  },
+  "fhirServer": {
+    "baseURL": "http://fhir:8080/fhir",
+    "username": "",
+    "password": ""
+  },
+  "elastic": {
+    "server": "http://opensearch:9200",
+    "username": "",
+    "password": "",
+    "max_compilations_rate": "10000/1m",
+    "index": "patients"
+  },
+  "codes": {
+    "goldenRecord": "5c827da5-4858-4f3d-a50c-62ece001efea"
+  },
+  "structureDefinition": {
+    "uri": "http://openclientregistry.org/fhir",
+    "reportRelationship": "patientreport"
+  },
+  "matching": {
+    "tool": "elasticsearch"
+  },
+  "clients": [
+    {
+      "id": "chris",
+      "displayName": "CHRIS Mobile"
+    },
+    {
+      "id": "openhim",
+      "displayName": "OpenHIM"
+    }
+  ],
+  "systems": {
+    "CRBaseURI": "http://openclientregistry.org/fhir",
+    "internalid": {
+      "uri": [
+        "http://openclientregistry.org/fhir/internalid"
+      ],
+      "displayName": "Internal ID"
+    },
+    "philhealth": {
+      "uri": "https://www.philhealth.gov.ph/members",
+      "displayName": "PhilHealth Member ID"
+    },
+    "philsys": {
+      "uri": "https://psa.gov.ph/philsys",
+      "displayName": "PhilSys National ID"
+    }
+  },
+  "sync": {
+    "lastFHIR2ESSync": "2026-08-24T14:05:42"
+  },
+  "__comments": {
+    "matching.tool": "elasticsearch uses OpenSearch for fuzzy matching algorithms"
+  }
+}

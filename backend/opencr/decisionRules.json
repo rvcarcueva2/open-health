@@ -1,0 +1,52 @@
+{
+  "__comments": {
+    "description": "Decision rules for patient matching in the Philippine community health context",
+    "matchingType": "deterministic uses score_mode:sum — each matched field adds its weight to the score. Final score = match_all(1.0) + sum_of_matched_fields.",
+    "why_no_national_id_rule": "The record-linkage plugin treats empty strings as valid values (not null). Since nationalid is indexed as empty string for patients without IDs, comparing '' vs '' yields a perfect match score. National ID rule should only be added after patching OpenCR indexing to omit empty fields from OpenSearch."
+  },
+  "rules": [
+    {
+      "__comment": "Demographic match — requires ALL 4 fields to auto-match (score 5 = match_all 1.0 + 4 fields x weight 1.0)",
+      "matchingType": "deterministic",
+      "fields": {
+        "given": {
+          "algorithm": "jaro-winkler-similarity",
+          "threshold": 0.8,
+          "fhirpath": "name.where(use='official').given",
+          "espath": "given",
+          "weight": 1,
+          "null_handling": "conservative",
+          "null_handling_both": "discard"
+        },
+        "family": {
+          "algorithm": "jaro-winkler-similarity",
+          "threshold": 0.9,
+          "fhirpath": "name.where(use='official').family",
+          "espath": "family",
+          "weight": 1,
+          "null_handling": "conservative",
+          "null_handling_both": "discard"
+        },
+        "birthDate": {
+          "algorithm": "exact",
+          "fhirpath": "birthDate",
+          "espath": "birthDate",
+          "weight": 1,
+          "null_handling": "conservative",
+          "null_handling_both": "discard"
+        },
+        "gender": {
+          "algorithm": "exact",
+          "fhirpath": "gender",
+          "espath": "gender",
+          "weight": 1,
+          "null_handling": "conservative",
+          "null_handling_both": "discard"
+        }
+      },
+      "potentialMatchThreshold": 4,
+      "autoMatchThreshold": 5,
+      "filters": {}
+    }
+  ]
+}

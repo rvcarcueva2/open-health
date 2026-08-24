@@ -22,8 +22,56 @@ Community Health Records and Information System is an offline-first healthcare a
 - npm or yarn
 - Expo CLI (`npx expo`)
 - Android emulator or physical device
+- Docker & Docker Compose (for backend services)
+- OpenSSL (for generating OpenCR certificates)
+- Git Bash or WSL (Windows only, for running shell scripts)
 
-### Install & Run
+### 1. Backend Setup
+
+The backend must be running before the mobile app can sync data.
+
+```bash
+cd backend
+
+# Generate OpenCR TLS certificates (required, one-time)
+cd opencr
+bash generate-certs.sh
+cd ..
+
+# Start all services
+docker compose up -d
+
+# Wait ~90 seconds for all services to initialize, then verify:
+docker compose ps
+docker logs opencr --tail 5   # Should show "Done loading Default data"
+```
+
+Services that will start:
+| Service | Port | Purpose |
+|---------|------|---------|
+| HAPI FHIR | 8080 | Main clinical data store |
+| OpenHIM (HTTP) | 5001 | Transaction router (mobile app connects here) |
+| OpenHIM Console | 9000 | Admin UI for OpenHIM |
+| OpenCR | 3004 | Patient deduplication / MPI (HTTPS) |
+| OpenCR HAPI FHIR | 8090 | Internal demographics store |
+| OpenSearch | 9200 | Fuzzy matching engine |
+| PostgreSQL | 5432 | Database for HAPI FHIR |
+| MongoDB | — | OpenHIM transaction store |
+
+### 2. Configure the Mobile App
+
+Update `src/constants/api.ts` with your machine's local IP:
+
+```typescript
+export const API_URL = 'http://<YOUR_IP>:5001/fhir';
+```
+
+Find your IP:
+- **Windows:** Run `ipconfig` → Wi-Fi/Ethernet IPv4 address (e.g., `192.168.1.100`)
+- **macOS:** Run `ifconfig en0` → `inet` address
+- **Linux:** Run `ip addr show` → look for your LAN IP
+
+### 3. Install & Run the App
 
 ```bash
 npm install
@@ -34,6 +82,8 @@ Open on:
 - [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
 - [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
 - [Expo Go](https://expo.dev/go)
+
+> **Note:** The app works fully offline. Backend services are only needed for synchronization.
 
 ---
 
@@ -391,11 +441,19 @@ The `barangays` table is seeded on first launch from `psgc-barangays.json` (42,0
 
 ## API Configuration
 
-Backend HAPI FHIR server address is configured in `src/constants/api.ts`:
+The backend server address is configured in `src/constants/api.ts`:
 
 ```typescript
-export const API_URL = 'http://192.168.254.162:8080/fhir';
+// OpenHIM HTTP transaction port — routes Patient to OpenCR, everything else to HAPI FHIR
+export const API_URL = 'http://<YOUR_SERVER_IP>:5001/fhir';
 ```
+
+Replace `<YOUR_SERVER_IP>` with the IP address of the machine running the backend Docker services. To find your IP:
+
+- **Windows:** `ipconfig` → look for your Wi-Fi or Ethernet IPv4 address
+- **macOS/Linux:** `ifconfig` or `ip addr` → look for your local network IP (e.g., 192.168.x.x)
+
+> The mobile app connects to OpenHIM (port 5001), which routes Patient resources through OpenCR for deduplication, and all other resources directly to HAPI FHIR.
 
 
 ---
