@@ -1,4 +1,4 @@
-Chris 
+## CHRIS 
 
 Community Health Records and Information System is an offline-first healthcare application for community health workers in the Philippines, built with React Native (Expo), SQLite, and HAPI FHIR R4.
 
