@@ -6,11 +6,21 @@ Community Health Records and Information System is an offline-first healthcare a
 
 ## Tech Stack
 
-- **Frontend:** React Native, Expo SDK 54, TypeScript, Expo Router
+### Frontend
+- **Framework:** React Native, Expo SDK 54, TypeScript, Expo Router
 - **Database:** SQLite (expo-sqlite) — local source of truth
-- **Backend:** HAPI FHIR JPA Server (R4) + PostgreSQL
-- **Standards:** HL7 FHIR R4, PH Core Implementation Guide
-- **Terminology:** PSGC (complete dataset — 42,029 barangays)
+
+### Backend
+- **HAPI FHIR** JPA Server (R4) + PostgreSQL — clinical data store
+- **OpenHIM** — interoperability layer / transaction router
+- **OpenCR** — Master Patient Index (patient deduplication)
+- **OpenSearch** — fuzzy matching engine for OpenCR
+- **MongoDB** — OpenHIM transaction logs
+
+### Standards
+- HL7 FHIR R4
+- PH Core Implementation Guide
+- PSGC (Philippine Standard Geographic Code)
 
 ---
 
