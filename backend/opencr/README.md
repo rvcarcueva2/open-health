@@ -230,6 +230,51 @@ docker compose up -d opencr-postgres opensearch opencr-fhir opencr
 
 ---
 
+## Querying OpenCR's HAPI FHIR (Port 8090)
+
+OpenCR stores all patient records in its own dedicated HAPI FHIR instance at `http://localhost:8090/fhir`. This is separate from the main HAPI FHIR (port 8080).
+
+### All Patients (source + golden)
+
+```
+http://localhost:8090/fhir/Patient?_count=50
+```
+
+### Golden Records Only (unique/deduplicated patients)
+
+The golden record tag has **no system URI** — it uses a bare code from `config.json` → `codes.goldenRecord`:
+
+```
+http://localhost:8090/fhir/Patient?_tag=5c827da5-4858-4f3d-a50c-62ece001efea
+```
+
+> **Note:** System-qualified queries like `_tag=http://openclientregistry.org/fhir|5c827da5-...` will return 0 results because OpenCR stores the tag without a system.
+
+### Understanding the Records
+
+Golden records have:
+- `meta.tag[].code = "5c827da5-4858-4f3d-a50c-62ece001efea"` with `display = "Golden Record"`
+- `link[]` entries with `type = "seealso"` pointing to the source patients that were matched into this identity
+
+Source records (submitted by CHRIS) have:
+- `link[]` with `type = "refer"` pointing UP to their golden record
+- The `internalid` identifier added by the sync worker
+
+### Other Useful Queries
+
+```
+# Search by name
+http://localhost:8090/fhir/Patient?name=Juan
+
+# Search by identifier (internalid)
+http://localhost:8090/fhir/Patient?identifier=http://openclientregistry.org/fhir/internalid|<local-id>
+
+# Specific patient by ID
+http://localhost:8090/fhir/Patient/<id>
+```
+
+---
+
 ## Troubleshooting
 
 ```bash
