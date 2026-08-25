@@ -106,7 +106,7 @@ Open on:
                  │
                  ▼
 ┌─────────────────────────────────────────────────────┐
-│        OpenHIM (port 5001 — transaction router)      │
+│        OpenHIM (port 5001 — transaction router)     │
 ├──────────────────────────┬──────────────────────────┤
 │  POST/PUT /fhir/Patient  │     POST /fhir (Bundle)  │
 └────────────┬─────────────┴─────────────┬────────────┘
