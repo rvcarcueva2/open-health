@@ -18,19 +18,37 @@ Without an MPI, the same patient registered at two health centers would appear a
 ## Architecture
 
 ```
-Incoming Patient (from CHRIS via OpenHIM)
-      ↓
-OpenHIM routes POST /fhir/Patient → OpenCR
-      ↓
-OpenCR Decision Rules Engine
-      └── Demographic match: jaro-winkler on name + exact DOB + exact gender
-      ↓
-Match found (score ≥ 5)?  → link to existing golden record (same CRUID)
-Potential match (score ≥ 4)? → flag for manual review in console
-No match? → create new golden record (new CRUID)
-      ↓
-Store demographics in OpenCR HAPI FHIR (port 8090)
-Index in OpenSearch (port 9200)
+┌──────────────────────────────────────────────────────────────────────┐
+│                         CHRIS Mobile App                              │
+└────────────────────────────────┬─────────────────────────────────────┘
+                                 │ POST /fhir/Patient
+                                 ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                    OpenHIM (port 5001)                                │
+│                    Routes /fhir/Patient → OpenCR                      │
+└────────────────────────────────┬─────────────────────────────────────┘
+                                 │
+                                 ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                    OpenCR (port 3004 HTTPS / 3001 HTTP)               │
+│                    Decision Rules Engine                              │
+│                                                                      │
+│   Demographic match: jaro-winkler on name + exact DOB + exact gender │
+│                                                                      │
+│   Score ≥ 5 (all match)  → link to existing golden record            │
+│   Score ≥ 4 (3 match)   → flag for manual review                    │
+│   Score < 4 (no match)  → create new golden record                  │
+└───────────────┬──────────────────────────────────┬───────────────────┘
+                │                                  │
+                ▼                                  ▼
+┌───────────────────────────────┐  ┌───────────────────────────────────┐
+│  OpenCR HAPI FHIR (port 8090) │  │     OpenSearch (port 9200)        │
+│  Stores source + golden       │  │     Fuzzy matching index          │
+│  patient records              │  │     (jaro-winkler, levenshtein)   │
+├───────────────────────────────┤  └───────────────────────────────────┘
+│  PostgreSQL (internal)        │
+│  Database for OpenCR FHIR     │
+└───────────────────────────────┘
 ```
 
 ---

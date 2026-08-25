@@ -18,7 +18,6 @@ Without OpenHIM, the mobile app would need to know about every backend service i
 ```
 Mobile App → POST /fhir/Patient → OpenHIM → OpenCR (deduplication)
 Mobile App → POST /fhir (Bundle) → OpenHIM → HAPI FHIR (direct)
-Frappe Health → POST /frappe/patient → OpenHIM → Mediator → HAPI FHIR
 ```
 
 ---
@@ -26,18 +25,41 @@ Frappe Health → POST /frappe/patient → OpenHIM → Mediator → HAPI FHIR
 ## Architecture
 
 ```
-┌──────────────┐     ┌──────────────────────────────┐     ┌───────────────┐
-│ CHRIS Mobile │────▶│         OpenHIM Core          │────▶│    OpenCR     │
-│    App       │     │                              │     │  (Patients)   │
-└──────────────┘     │  Port 5001: HTTP Transactions│     └───────────────┘
-                     │  Port 8081: Admin API         │
-┌──────────────┐     │  Port 5000: HTTPS API        │     ┌───────────────┐
-│ Frappe Health│────▶│                              │────▶│  HAPI FHIR    │
-└──────────────┘     └──────────────────────────────┘     │  (Everything) │
-                                    │                     └───────────────┘
-                     ┌──────────────┴───────────────┐
+┌──────────────────────────────────────────────────────────────────────┐
+│                         CHRIS Mobile App                             │
+│                    POST /fhir/... to port 5001                       │
+└────────────────────────────────┬─────────────────────────────────────┘
+                                 │
+                                 ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                         OpenHIM Core                                 │
+│                                                                      │
+│   Port 5001: HTTP Transactions (mobile app connects here)            │
+│   Port 8081: Admin API (console connects here)                       │
+│   Port 5000: HTTPS API                                               │
+│                                                                      │
+│   ┌────────────────────────────────────────────────────────────┐     │
+│   │  Channel Routing (by URL pattern + HTTP method)            │     │
+│   │                                                            │     │
+│   │  Priority 1: POST/PUT /fhir/Patient → OpenCR               │     │
+│   │  Priority 2: ALL /fhir/*            → HAPI FHIR            │     │
+│   └────────────────────────────────────────────────────────────┘     │
+└───────────────┬──────────────────────────────────┬───────────────────┘
+                │                                  │
+                ▼                                  ▼
+┌───────────────────────────────┐  ┌───────────────────────────────────┐
+│   OpenCR (port 3001 HTTP)     │  │     HAPI FHIR (port 8080)         │
+│   Patient Deduplication       │  │     Clinical Data Store           │
+│   (MPI / Golden Records)      │  │     (Encounters, Observations,    │
+│                               │  │      Bundles, etc.)               │
+└───────────────────────────────┘  └───────────────────────────────────┘
+
+                     ┌──────────────────────────────┐
                      │      OpenHIM Console         │
                      │    (Admin UI, port 9000)     │
+                     ├──────────────────────────────┤
+                     │      MongoDB (port 27017)    │
+                     │    Transaction log storage   │
                      └──────────────────────────────┘
 ```
 
@@ -66,6 +88,23 @@ On first access, you need to accept the self-signed certificate at `https://loca
 ---
 
 ## Channels (Routing Rules)
+┌─────────────────────┐
+│   CHRIS Mobile App  │
+│  (React Native)     │
+└──────────┬──────────┘
+           │
+           │ POST /fhir/...
+           ▼
+┌──────────────────────────────┐
+│         OpenHIM Core         │
+│   (Transaction Router +      │
+│    Audit Trail)              │
+│   ports: 5001 HTTP, 8081 API │
+└──────────┬───────────────────┘
+           │
+           ├── /fhir/Patient ──────→ OpenCR (port 3001) → deduplication
+           │
+           └── /fhir (everything else) ──→ HAPI FHIR (port 8080)
 
 Channels are configured via the setup script (`backend/scripts/configure-openhim-opencr.js`):
 
@@ -73,9 +112,6 @@ Channels are configured via the setup script (`backend/scripts/configure-openhim
 |---------|-------------|-----------|---------|
 | Patient MPI (OpenCR) | `^/fhir/Patient.*$` (POST/PUT) | `opencr:3001` | Patient deduplication |
 | FHIR Pass-through | `^/fhir.*$` (all methods) | `hapi-fhir:8080` | Direct FHIR access |
-| Frappe Patient to FHIR | `^/frappe/patient$` | `mediator:3000` | Frappe → FHIR sync |
-| Frappe Encounter to FHIR | `^/frappe/encounter$` | `mediator:3000` | Frappe → FHIR sync |
-| Frappe Observation to FHIR | `^/frappe/observation$` | `mediator:3000` | Frappe → FHIR sync |
 
 **Priority matters:** The Patient MPI channel has priority 1, so POST/PUT to `/fhir/Patient` goes to OpenCR first. All other `/fhir/*` requests fall through to the FHIR Pass-through channel (HAPI FHIR).
 

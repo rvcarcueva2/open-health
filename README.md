@@ -483,34 +483,6 @@ Replace `<YOUR_SERVER_IP>` with the IP address of the machine running the backen
 - Encounter = When did care happen?
 - Observation = What was measured?
 
-## OpenHIM
-
-### Overview
-
-[OpenHIM](http://openhim.org/) (Open Health Information Mediator) is the interoperability layer that routes all mobile app traffic to the correct backend service. It provides a centralized audit trail, transaction logging, and intelligent routing.
-
-### Routing
-
-```
-┌─────────────────────┐
-│   CHRIS Mobile App  │
-│  (React Native)     │
-└──────────┬──────────┘
-           │
-           │ POST /fhir/...
-           ▼
-┌──────────────────────────────┐
-│         OpenHIM Core         │
-│   (Transaction Router +      │
-│    Audit Trail)              │
-│   ports: 5001 HTTP, 8081 API │
-└──────────┬───────────────────┘
-           │
-           ├── /fhir/Patient ──────→ OpenCR (port 3001) → deduplication
-           │
-           └── /fhir (everything else) ──→ HAPI FHIR (port 8080)
-```
-
 ### Services & Ports
 
 | Service | Port | Protocol | Purpose |
@@ -519,47 +491,6 @@ Replace `<YOUR_SERVER_IP>` with the IP address of the machine running the backen
 | OpenHIM Core (API) | 8081 | HTTPS | Admin API (Console connects here) |
 | OpenHIM Console | 9000 | HTTP | Admin web UI |
 | MongoDB | 27017 | TCP | OpenHIM transaction store |
-
-### Console Access
-
-```
-URL:      http://localhost:9000
-Email:    root@openhim.org
-Password: apc-open-health
-```
-
-On first access, accept the self-signed certificate at `https://localhost:8081` before logging in.
-
-### Channels
-
-| Channel | URL Pattern | Routes To | Purpose |
-|---|---|---|---|
-| OpenCR Patient | `/fhir/Patient` | OpenCR (port 3001) | Patient deduplication |
-| HAPI FHIR | `/fhir` | HAPI FHIR (port 8080) | All other FHIR resources |
-
-### Headers
-
-The mobile app includes the following header on all requests:
-
-```
-x-openhim-clientid: chris-mobile
-```
-
-### Troubleshooting
-
-```bash
-# View OpenHIM Core logs
-docker logs openhim-core -f
-
-# Check transaction log via API
-curl -k https://localhost:8081/transactions -H "Authorization: Basic ..."
-```
-
-| Problem | Solution |
-|---|---|
-| Console shows "Cannot connect to Core" | Accept self-signed cert at `https://localhost:8081` first |
-| 401 Unauthorized | Verify `chris-mobile` client exists and channel auth is correct |
-| Patient not reaching OpenCR | Check OpenHIM channel routing and OpenCR logs |
 
 
 ## References
