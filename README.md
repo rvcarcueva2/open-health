@@ -93,7 +93,6 @@ Open on:
 - [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
 - [Expo Go](https://expo.dev/go)
 
-> **Note:** The app works fully offline. Backend services are only needed for synchronization.
 
 ---
 
