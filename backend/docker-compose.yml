@@ -194,6 +194,23 @@ services:
     networks:
       - opencr-network
 
+  # ===========================================
+  # Node-RED (Integration Flow Editor)
+  # Visual browser-based workflow automation
+  # ===========================================
+  node-red:
+    image: nodered/node-red:latest
+    container_name: node-red
+    user: "0"
+    environment:
+      - TZ=Asia/Manila
+    ports:
+      - "1880:1880"
+    volumes:
+      - ./node-red/data:/data
+    networks:
+      - openhim-network
+
 volumes:
   hapi-data:
   postgres-data:

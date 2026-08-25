@@ -15,6 +15,7 @@ Community Health Records and Information System is an offline-first healthcare a
 - **OpenHIM** — interoperability layer / transaction router
 - **OpenCR** — Master Patient Index (patient deduplication)
 - **OpenSearch** — fuzzy matching engine for OpenCR
+- **Node-RED** — visual integration flow editor (CSV import, service orchestration)
 - **MongoDB** — OpenHIM transaction logs
 
 ### Standards
@@ -67,6 +68,7 @@ Services that will start:
 | OpenSearch | 9200 | Fuzzy matching engine |
 | PostgreSQL | 5432 | Database for HAPI FHIR |
 | MongoDB | — | OpenHIM transaction store |
+| Node-RED | 1880 | Integration flow editor (CSV import, service queries) |
 
 ### 2. Configure the Mobile App
 
@@ -110,7 +112,7 @@ Open on:
                  │
                  ▼
 ┌─────────────────────────────────┐
-│       Sync Queue (pending )     │
+│       Sync Queue (pending)      │
 └────────────────┬────────────────┘
                  │
                  ▼
@@ -128,9 +130,19 @@ Open on:
 │  OpenSearch (port 9200)│   │  PostgreSQL (port 5432)│
 │  OpenCR HAPIFHIR (8090)│   │                        │
 └────────────────────────┘   └────────────────────────┘
+
+┌─────────────────────────────────────────────────────┐
+│       Node-RED (port 1880 — integration flows)      │
+├─────────────────────────────────────────────────────┤
+│  CSV Import → FHIR Patient → OpenHIM → OpenCR       │
+│  OpenCR Patient Lookup (golden records, links)      │
+│  Direct FHIR Patient Router → HAPI FHIR             │
+└─────────────────────────────────────────────────────┘
 ```
 
 The app works **completely offline**. All data is saved locally first, then synchronized when connectivity is available. Patient resources are routed through OpenCR for deduplication, while clinical resources (Encounters, Observations) go directly to HAPI FHIR.
+
+Node-RED provides admin-level integration flows (bulk CSV import, OpenCR lookups) that operate independently from the mobile app's sync queue.
 
 ---
 

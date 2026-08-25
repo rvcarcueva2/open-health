@@ -70,7 +70,7 @@
     }
   },
   "sync": {
-    "lastFHIR2ESSync": "2026-08-24T14:05:42"
+    "lastFHIR2ESSync": "2026-08-25T05:21:09"
   },
   "__comments": {
     "matching.tool": "elasticsearch uses OpenSearch for fuzzy matching algorithms"
