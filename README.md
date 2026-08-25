@@ -483,15 +483,6 @@ Replace `<YOUR_SERVER_IP>` with the IP address of the machine running the backen
 - Encounter = When did care happen?
 - Observation = What was measured?
 
-### Services & Ports
-
-| Service | Port | Protocol | Purpose |
-|---|---|---|---|
-| OpenHIM Core (HTTP) | 5001 | HTTP | Transaction routing (mobile app connects here) |
-| OpenHIM Core (API) | 8081 | HTTPS | Admin API (Console connects here) |
-| OpenHIM Console | 9000 | HTTP | Admin web UI |
-| MongoDB | 27017 | TCP | OpenHIM transaction store |
-
 
 ## References
 
