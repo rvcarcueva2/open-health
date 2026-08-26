@@ -15,7 +15,7 @@ Community Health Records and Information System is an offline-first healthcare a
 - **OpenHIM** — interoperability layer / transaction router
 - **OpenCR** — Master Patient Index (patient deduplication)
 - **OpenSearch** — fuzzy matching engine for OpenCR
-- **Node-RED** — visual integration flow editor (CSV import, service orchestration)
+- **BridgeLink** — healthcare integration engine (HL7 v2/v3, FHIR, DICOM, EDI)
 - **MongoDB** — OpenHIM transaction logs
 
 ### Standards
@@ -68,7 +68,7 @@ Services that will start:
 | OpenSearch | 9200 | Fuzzy matching engine |
 | PostgreSQL | 5432 | Database for HAPI FHIR |
 | MongoDB | — | OpenHIM transaction store |
-| Node-RED | 1880 | Integration flow editor (CSV import, service queries) |
+| BridgeLink | 8443, 8082 | Healthcare integration engine (HL7 v2/v3, FHIR, DICOM, CSV) |
 
 ### 2. Configure the Mobile App
 
@@ -132,17 +132,18 @@ Open on:
 └────────────────────────┘   └────────────────────────┘
 
 ┌─────────────────────────────────────────────────────┐
-│       Node-RED (port 1880 — integration flows)      │
+│      BridgeLink (port 8443 — integration engine)    │
 ├─────────────────────────────────────────────────────┤
-│  CSV Import → FHIR Patient → OpenHIM → OpenCR       │
-│  OpenCR Patient Lookup (golden records, links)      │
-│  Direct FHIR Patient Router → HAPI FHIR             │
+│  Receives: HL7 v2/v3, CSV, DICOM, EDI, JSON        │
+│  Transforms → FHIR JSON                            │
+│  HTTP Sender → OpenHIM (port 5001)                  │
+│  OpenHIM routes Patient → OpenCR (dedup)            │
 └─────────────────────────────────────────────────────┘
 ```
 
 The app works **completely offline**. All data is saved locally first, then synchronized when connectivity is available. Patient resources are routed through OpenCR for deduplication, while clinical resources (Encounters, Observations) go directly to HAPI FHIR.
 
-Node-RED provides admin-level integration flows (bulk CSV import, OpenCR lookups) that operate independently from the mobile app's sync queue.
+BridgeLink handles external system integrations (HL7 v2 from hospital HIS/LIS, CSV imports, DICOM from radiology, EDI for billing) by transforming them into FHIR JSON and routing through the same OpenHIM → OpenCR/HAPI FHIR pipeline.
 
 ---
 
@@ -504,6 +505,134 @@ Replace `<YOUR_SERVER_IP>` with the IP address of the machine running the backen
 - Encounter = When did care happen?
 - Observation = What was measured?
 
+---
+
+## BridgeLink (Healthcare Integration Engine)
+
+BridgeLink is an open-source fork of Mirth Connect that handles healthcare-specific data formats (HL7 v2/v3, DICOM, EDI) and general formats (CSV, JSON, XML). It transforms incoming data into FHIR resources and routes them through OpenHIM.
+
+### How BridgeLink connects to OpenHIM → OpenCR
+
+BridgeLink and OpenHIM are on the same Docker network (`openhim-network`). BridgeLink's destination channels use an **HTTP Sender** connector that posts FHIR JSON directly to OpenHIM's internal Docker hostname:
+
+```
+BridgeLink Channel (Destination HTTP Sender)
+    │
+    │  POST http://openhim-core:5001/fhir/Patient
+    │  Headers:
+    │    Content-Type: application/fhir+json
+    │    Accept: application/fhir+json
+    │    x-openhim-clientid: chris-mobile
+    │
+    ▼
+OpenHIM (port 5001)
+    │  Channel matches: POST /fhir/Patient → routes to OpenCR
+    ▼
+OpenCR (port 3001 HTTP proxy inside Docker)
+    │  Deduplicates patient using decision rules
+    │  Assigns/links golden record (CRUID)
+    ▼
+OpenCR HAPI FHIR (port 8090) — patient stored
+OpenSearch (port 9200) — patient indexed for future matching
+```
+
+The key connection details:
+- **URL:** `http://openhim-core:5001/fhir/Patient` (Docker internal DNS)
+- **Header:** `x-openhim-clientid: chris-mobile` identifies the source to OpenHIM
+- **Same network:** Both services are on `openhim-network` in docker-compose
+
+### Access BridgeLink Administrator
+
+```
+URL: https://localhost:8443
+Launcher: https://github.com/Innovar-Healthcare/BridgeLink-launcher/releases
+Default login: admin / admin
+```
+
+> The web-based Java Web Start launcher has signing issues. Use the standalone **BridgeLink Launcher** desktop app instead.
+
+### CSV Patient Import Channel
+
+A working channel that imports patients from CSV and routes them through OpenCR for deduplication.
+
+**Endpoint:** `http://localhost:8082/import/csv` (POST, text/plain)
+
+**CSV Format:**
+```csv
+first_name,last_name,gender,birthdate,phone
+Juan,Dela Cruz,male,1990-05-15,09171234567
+Maria,Santos,female,1985-03-20,09189876543
+```
+
+**Channel Configuration:**
+
+| Setting | Value |
+|---------|-------|
+| Source Connector | HTTP Listener, port 8082 |
+| Source Inbound Data Type | Delimited Text (comma, header row) |
+| Source Outbound Data Type | XML |
+| Destination Connector | HTTP Sender |
+| Destination URL | `http://openhim-core:5001/fhir/Patient` |
+| Destination Method | POST |
+| Destination Content-Type | `application/fhir+json` |
+
+**Transformer (E4X JavaScript):**
+
+```javascript
+// E4X XML access - msg is the root <delimited> element
+var firstName = msg.row.column1.toString();
+var lastName = msg.row.column2.toString();
+var gender = msg.row.column3.toString().toLowerCase();
+var birthDate = msg.row.column4.toString();
+var phone = msg.row.column5.toString();
+
+if (gender === 'm') gender = 'male';
+else if (gender === 'f') gender = 'female';
+else if (gender !== 'male' && gender !== 'female') gender = 'unknown';
+
+var uuid = java.util.UUID.randomUUID().toString();
+
+var patient = {
+    resourceType: 'Patient',
+    id: uuid,
+    meta: { profile: ['https://fhir.doh.gov.ph/phcore/StructureDefinition/ph-core-patient'] },
+    identifier: [{ system: 'http://openclientregistry.org/fhir/internalid', value: uuid }],
+    active: true,
+    name: [{ use: 'official', family: lastName, given: [firstName] }],
+    gender: gender
+};
+
+if (birthDate && birthDate.length > 0) patient.birthDate = birthDate;
+if (phone && phone.length > 0) patient.telecom = [{ system: 'phone', value: phone, use: 'mobile' }];
+
+msg = JSON.stringify(patient);
+```
+
+**Testing:**
+```powershell
+$csv = "first_name,last_name,gender,birthdate,phone`nJuan,Dela Cruz,male,1990-05-15,09171234567"
+Invoke-WebRequest -Uri "http://localhost:8082/import/csv" -Method POST -Body $csv -ContentType "text/plain" -UseBasicParsing
+```
+
+**Data Flow:**
+```
+CSV text → BridgeLink HTTP Listener (port 8082)
+    → Delimited Text parser (splits by row, skips header)
+    → Transformer (E4X JavaScript: CSV XML → FHIR Patient JSON)
+    → HTTP Sender → OpenHIM (port 5001, /fhir/Patient)
+    → OpenHIM routes to OpenCR
+    → OpenCR deduplicates → assigns golden record
+    → Stored in OpenCR HAPI FHIR (port 8090)
+```
+
+### Key Notes for Channel Development
+
+- BridgeLink parses Delimited Text into E4X XML: `<delimited><row><column1>...</column1></row></delimited>`
+- Access columns with: `msg.row.column1.toString()` (not bracket notation)
+- Set Source Outbound to `XML` so the Destination transformer receives a parsed XML object
+- The `x-openhim-clientid: chris-mobile` header is required for OpenHIM to accept the request
+- Each CSV row becomes a separate message when "Split Batch By: Record" is enabled
+
 
 ## References
 
@@ -514,3 +643,6 @@ Replace `<YOUR_SERVER_IP>` with the IP address of the machine running the backen
 - [PSGC — Philippine Statistics Authority](https://psa.gov.ph/classification/psgc)
 - [PSGC Dataset (JSON)](https://github.com/isaacdarcilla/philippine-addresses)
 - [Expo Documentation (v54)](https://docs.expo.dev/versions/v54.0.0/)
+- [BridgeLink (GitHub)](https://github.com/Innovar-Healthcare/BridgeLink)
+- [BridgeLink Container (Docker)](https://github.com/Innovar-Healthcare/bridgelink-container)
+- [BridgeLink Launcher](https://github.com/Innovar-Healthcare/BridgeLink-launcher/releases)

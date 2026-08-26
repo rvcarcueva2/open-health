@@ -195,21 +195,51 @@ services:
       - opencr-network
 
   # ===========================================
-  # Node-RED (Integration Flow Editor)
-  # Visual browser-based workflow automation
+  # BridgeLink (Healthcare Integration Engine)
+  # HL7 v2/v3, FHIR, DICOM, EDI parser & router
   # ===========================================
-  node-red:
-    image: nodered/node-red:latest
-    container_name: node-red
-    user: "0"
+  bridgelink:
+    image: innovarhealthcare/bridgelink:26.6.0
+    container_name: bridgelink
     environment:
-      - TZ=Asia/Manila
+      - MP_DATABASE=postgres
+      - MP_DATABASE_URL=jdbc:postgresql://bridgelink-db:5432/bridgelink
+      - MP_DATABASE_USERNAME=bridgelink
+      - MP_DATABASE_PASSWORD=bridgelink
+      - MP_DATABASE_DBNAME=bridgelink
+      - MP_DATABASE_MAX__CONNECTIONS=20
+      - MP_DATABASE_CONNECTION_MAXRETRY=3
+      - MP_DATABASE_RETRY_WAIT=10000
+      - MP_KEYSTORE_STOREPASS=changeme
+      - MP_KEYSTORE_KEYPASS=changeme
+      - MP_VMOPTIONS=512
     ports:
-      - "1880:1880"
-    volumes:
-      - ./node-red/data:/data
+      - "8443:8443"
+      - "8082:8082"
+    depends_on:
+      bridgelink-db:
+        condition: service_healthy
     networks:
       - openhim-network
+    volumes:
+      - bridgelink-appdata:/opt/bridgelink/appdata
+
+  bridgelink-db:
+    image: postgres:15-alpine
+    container_name: bridgelink-db
+    environment:
+      - POSTGRES_USER=bridgelink
+      - POSTGRES_PASSWORD=bridgelink
+      - POSTGRES_DB=bridgelink
+    volumes:
+      - bridgelink-postgres-data:/var/lib/postgresql/data
+    networks:
+      - openhim-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bridgelink"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
 volumes:
   hapi-data:
@@ -217,6 +247,8 @@ volumes:
   mongo-data:
   opencr-postgres-data:
   opensearch-data:
+  bridgelink-appdata:
+  bridgelink-postgres-data:
 
 networks:
   openhim-network:

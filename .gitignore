@@ -41,6 +41,3 @@ app-example
 # generated native folders
 /ios
 /android
-
-# Node-RED credentials (may contain secrets)
-backend/node-red/data/flows_cred.json
